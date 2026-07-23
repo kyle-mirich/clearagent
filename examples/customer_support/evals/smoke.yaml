@@ -1,0 +1,9 @@
+name: smoke
+type: output
+description: Customer support smoke suite.
+cases:
+  - name: shipped order
+    input: Where is order A123?
+    checks:
+      - contains: shipped
+      - contains: Friday

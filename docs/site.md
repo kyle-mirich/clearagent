@@ -1,0 +1,71 @@
+# ClearAgent Documentation
+
+This page is the website-ready table of contents for ClearAgent. It is organized
+as a learning path for new users first, then as a reference for contributors and
+maintainers.
+
+## Start Here
+
+- [Installation](install.md) - install ClearAgent as a dependency, choose
+  provider setup, and run a first external-project agent.
+- [Getting Started](getting-started.md) - install the project, run checks, create
+  local config, and run an example agent.
+- [Core Concepts](core-concepts.md) - understand agents, tools, providers,
+  structured outputs, traces, eval suites, graph flows, and chat sessions.
+- [Support Status](status.md) - see which surfaces are stable, young, local-only,
+  or optional.
+
+## Guides
+
+- [Evals](evals.md) - write YAML eval suites and run them through the CLI.
+- [Tracing](tracing.md) - inspect saved runs, turns, model requests, visual trace
+  timelines, replay, and request diffs.
+- [Pytest](pytest.md) - run ClearAgent eval suites from normal pytest tests.
+- [Providers](providers.md) - choose model URIs and understand provider request
+  shapes.
+- [Chat Backend](chat.md) - serve an agent through the FastAPI chat backend,
+  browser client, builder, and trace viewer.
+- [Promptfoo](promptfoo.md) - export optional Promptfoo configs and target
+  scripts.
+- [Application Flows](flows.md) - understand the main run, eval, replay, and chat
+  flows.
+- [Database](database.md) - understand local SQLite trace and chat storage.
+- [GitHub Deployment](deployment.md) - publish the repo, run CI, and validate
+  docs and package builds.
+- [Publishing](publishing.md) - build, inspect, dry-run, and publish Python
+  package artifacts.
+
+## Reference
+
+- [Reference](reference.md) - public Python APIs, CLI commands, eval checks,
+  trace paths, providers, and example modules.
+
+## Internals
+
+- [Architecture](architecture.md) - the runtime flow and trace persistence
+  invariant.
+
+Project background:
+
+- [Planning Artifacts](planning/index.md) - historical product and
+  implementation plans used while building the project.
+
+Planning artifacts can describe desired or future behavior. Use
+[Reference](reference.md) for current implemented commands and APIs.
+
+## Contributing
+
+- [Documentation Guide](contributing-docs.md) - how agents and contributors
+  should keep docs accurate as code changes.
+- [Contributing](../CONTRIBUTING.md) - development setup, quality checks, and
+  pull request expectations.
+- [Support](../SUPPORT.md) - where to ask questions and how to report bugs.
+- [Security Policy](../SECURITY.md) - supported versions and private
+  vulnerability reporting.
+- [Code of Conduct](../CODE_OF_CONDUCT.md) - expected behavior in project
+  spaces.
+
+## Maintenance Rule
+
+Every public behavior change should include a docs decision: update an existing
+page, add a new page and link it here, or explicitly note why no docs changed.

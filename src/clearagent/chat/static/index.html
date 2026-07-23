@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ClearAgent Chat</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <div id="chat-root" class="app-shell">
+      <aside class="sidebar" aria-label="Chat sessions">
+        <div class="brand">
+          <div class="brand-mark">CA</div>
+          <div>
+            <div class="brand-name">ClearAgent</div>
+            <div class="brand-subtitle">Local chat sessions</div>
+          </div>
+        </div>
+        <button id="new-chat" class="new-chat" type="button" aria-label="New chat">
+          <span class="new-chat-icon" aria-hidden="true">+</span>
+          <span>New chat</span>
+        </button>
+        <nav id="sessions" class="sessions" aria-label="Session history"></nav>
+      </aside>
+      <button id="sidebar-overlay" class="sidebar-overlay" type="button" aria-label="Close chat sessions" hidden></button>
+
+      <main class="chat-panel">
+        <header class="chat-header">
+          <div class="header-primary">
+            <button
+              id="sidebar-toggle"
+              class="icon-button sidebar-toggle"
+              type="button"
+              aria-label="Toggle chat sessions"
+              aria-expanded="true"
+            >
+              <span aria-hidden="true"></span>
+              <span aria-hidden="true"></span>
+              <span aria-hidden="true"></span>
+            </button>
+            <div>
+              <h1>ClearAgent Chat</h1>
+              <label class="agent-picker" for="agent-select">
+                <span class="sr-only">Agent</span>
+                <select id="agent-select" name="agent"></select>
+              </label>
+            </div>
+          </div>
+          <div class="header-actions">
+            <button id="builder-toggle" class="mode-button" type="button" aria-pressed="false">Builder</button>
+            <button id="traces-toggle" class="mode-button" type="button" aria-pressed="false">Traces</button>
+            <button id="settings-toggle" class="icon-button settings-toggle" type="button" aria-label="Open settings">
+              <span aria-hidden="true"></span>
+              <span aria-hidden="true"></span>
+              <span aria-hidden="true"></span>
+            </button>
+          </div>
+        </header>
+        <div id="status" class="status sr-only" role="status" aria-live="polite">Ready</div>
+
+        <form id="settings-panel" class="settings-panel" hidden>
+          <div class="settings-header">
+            <h2>Settings</h2>
+            <button id="settings-close" class="icon-button" type="button" aria-label="Close settings">x</button>
+          </div>
+          <label class="setting-field" for="provider-select">
+            <span>Provider</span>
+            <select id="provider-select" name="provider">
+              <option value="openrouter">OpenRouter</option>
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="google">Google Gemini</option>
+              <option value="local">Local OpenAI-compatible</option>
+              <option value="ollama">Ollama</option>
+            </select>
+          </label>
+          <label class="setting-field" for="model-select">
+            <span>Model</span>
+            <select id="model-select" name="model"></select>
+          </label>
+          <label class="setting-field" for="temperature-input">
+            <span>Temperature <output id="temperature-value" for="temperature-input">0.0</output></span>
+            <input id="temperature-input" name="temperature" type="range" min="0" max="2" step="0.1" value="0" />
+          </label>
+          <label class="setting-field" for="thinking-select">
+            <span>Thinking</span>
+            <select id="thinking-select" name="thinking">
+              <option value="off">Off</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </label>
+          <button id="save-settings" class="save-settings" type="submit">Save</button>
+        </form>
+
+        <section id="messages" class="messages" aria-live="polite"></section>
+
+        <section id="builder-shell" class="builder-shell" hidden>
+          <div class="builder-edit-panel" aria-label="Generated flow details">
+            <label for="flow-name-input">
+              <span>Flow name</span>
+              <input id="flow-name-input" type="text" autocomplete="off" />
+            </label>
+            <label for="flow-prompt-input">
+              <span>Agent instruction</span>
+              <textarea id="flow-prompt-input" rows="2"></textarea>
+            </label>
+          </div>
+          <div class="builder-workspace">
+            <div id="flow-canvas" class="flow-summary" aria-label="Generated flow summary"></div>
+            <aside class="builder-agent" aria-label="ClearAgent builder bot">
+              <div class="builder-agent-header">
+                <span>ClearAgent Builder</span>
+                <strong id="builder-node-count">0 nodes</strong>
+              </div>
+              <div id="builder-log" class="builder-log"></div>
+              <form id="builder-form" class="builder-form">
+                <textarea
+                  id="builder-prompt"
+                  rows="4"
+                  placeholder="Tell ClearAgent what flow to build"
+                ></textarea>
+                <button type="submit">Build flow</button>
+              </form>
+              <section class="code-export" aria-label="Generated Python flow">
+                <div class="code-export-header">
+                  <div>
+                    <span>Python flow</span>
+                    <small>Paste into an agent module</small>
+                  </div>
+                  <button id="copy-python" type="button">Copy</button>
+                </div>
+                <pre><code id="builder-code"></code></pre>
+                <div id="copy-python-status" class="copy-python-status" role="status" aria-live="polite"></div>
+              </section>
+            </aside>
+          </div>
+        </section>
+
+        <section id="trace-shell" class="trace-shell" hidden>
+          <aside class="trace-runs-panel" aria-label="Recent trace runs">
+            <div class="trace-panel-header">
+              <div>
+                <h2>Trace runs</h2>
+                <p>Recent local SQLite traces</p>
+              </div>
+              <button id="trace-refresh" type="button">Refresh</button>
+            </div>
+            <div id="trace-runs" class="trace-runs"></div>
+          </aside>
+          <section id="trace-detail" class="trace-detail" aria-label="Trace detail">
+            <div class="trace-empty">
+              <h2>Select a trace run</h2>
+              <p>Open a run to inspect turns, graph nodes, model requests, tool calls, and failures.</p>
+            </div>
+          </section>
+        </section>
+
+        <form id="composer" class="composer">
+          <textarea
+            id="prompt"
+            name="prompt"
+            rows="1"
+            placeholder="Message your agent"
+            autocomplete="off"
+          ></textarea>
+          <button id="send" type="submit">Send</button>
+        </form>
+      </main>
+    </div>
+    <script src="/assets/app.js" defer></script>
+  </body>
+</html>
