@@ -55,6 +55,15 @@ client should include `clearagent/chat/static/index.html`,
 uv run python -m zipfile -l dist/clearagent-<version>-py3-none-any.whl
 ```
 
+Run a credential-free metadata and package check against both artifacts:
+
+```bash
+uvx --from twine twine check dist/*
+```
+
+This is the required local artifact verification. It does not contact the
+upload endpoint or require PyPI credentials.
+
 ## Fresh-Environment Smoke Test
 
 Before any upload, install the wheel into a new environment outside the
@@ -72,24 +81,32 @@ uv pip install --python "$CLEARAGENT_SMOKE_DIR/.venv/bin/python" "$CLEARAGENT_WH
 Also run the offline fake-provider path in [Installation](install.md) against
 that installed wheel and confirm it writes a SQLite trace and passes its eval.
 
-## Dry Run
+## Optional Publish Dry Run
 
-Run a no-upload publish check:
+Maintainers can also ask `uv` to check the files it would select for an upload:
 
 ```bash
 uv publish --dry-run
 ```
 
-This validates the files selected for publishing without sending them to an
-index. Outside a trusted-publishing CI environment, `uv` may print a warning
-about missing credentials or an OIDC token during the dry run. That warning is
-expected as long as the artifact checks still run and the command exits
-successfully.
+The command does not upload the files, but it still performs publishing
+authentication. Outside a trusted-publishing environment, `uv` tries to obtain
+an OIDC token when no token, username/password, or keyring credentials are
+available. It can check the artifacts and then report a trusted-publishing
+failure; depending on the installed `uv` version, that authentication failure
+may also produce a nonzero exit status. Therefore, do not treat
+`uv publish --dry-run` as a required passing local gate without credentials.
+
+Use the credential-free `twine check` command above for a local gate that can
+pass without publishing access. Preserve `uv publish --dry-run` as an optional
+maintainer check when credentials are configured or trusted publishing is
+available.
 
 ## Publish
 
 Publishing is an approval-gated maintainer action. The preflight, build,
-fresh-environment smoke test, and dry run do not authorize an upload.
+artifact check, fresh-environment smoke test, and optional dry run do not
+authorize an upload.
 
 Publish with a PyPI token in the environment:
 
