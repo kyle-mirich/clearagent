@@ -236,6 +236,16 @@ def _list_models(provider: str) -> list[ModelOption]:
 
 def _list_openrouter_models() -> list[ModelOption]:
     fallback = [
+        ModelOption(id="openai/gpt-5.6-sol", name="GPT-5.6 Sol via OpenRouter"),
+        ModelOption(id="openai/gpt-5.6-terra", name="GPT-5.6 Terra via OpenRouter"),
+        ModelOption(id="openai/gpt-5.6-luna", name="GPT-5.6 Luna via OpenRouter"),
+        ModelOption(id="anthropic/claude-fable-5", name="Claude Fable 5 via OpenRouter"),
+        ModelOption(id="anthropic/claude-opus-5", name="Claude Opus 5 via OpenRouter"),
+        ModelOption(id="anthropic/claude-sonnet-5", name="Claude Sonnet 5 via OpenRouter"),
+        ModelOption(
+            id="anthropic/claude-haiku-4.5",
+            name="Claude Haiku 4.5 via OpenRouter",
+        ),
         ModelOption(id="openai/gpt-4.1-mini", name="GPT-4.1 Mini via OpenRouter"),
         ModelOption(id="anthropic/claude-sonnet-4.5", name="Claude Sonnet via OpenRouter"),
         ModelOption(id="google/gemini-2.5-flash", name="Gemini 2.5 Flash via OpenRouter"),
@@ -279,6 +289,9 @@ def _list_openai_models() -> list[ModelOption]:
         except Exception:
             pass
     return [
+        ModelOption(id="gpt-5.6-sol", name="GPT-5.6 Sol"),
+        ModelOption(id="gpt-5.6-terra", name="GPT-5.6 Terra"),
+        ModelOption(id="gpt-5.6-luna", name="GPT-5.6 Luna"),
         ModelOption(id="gpt-4.1-mini", name="GPT-4.1 Mini"),
         ModelOption(id="gpt-4o-mini", name="GPT-4o Mini"),
     ]
@@ -286,6 +299,10 @@ def _list_openai_models() -> list[ModelOption]:
 
 def _list_anthropic_models() -> list[ModelOption]:
     fallback = [
+        ModelOption(id="claude-fable-5", name="Claude Fable 5"),
+        ModelOption(id="claude-opus-5", name="Claude Opus 5"),
+        ModelOption(id="claude-sonnet-5", name="Claude Sonnet 5"),
+        ModelOption(id="claude-haiku-4-5-20251001", name="Claude Haiku 4.5"),
         ModelOption(id="claude-sonnet-4-20250514", name="Claude Sonnet 4"),
         ModelOption(id="claude-opus-4-1-20250805", name="Claude Opus 4.1"),
         ModelOption(id="claude-3-5-haiku-20241022", name="Claude Haiku 3.5"),
@@ -300,6 +317,7 @@ def _list_anthropic_models() -> list[ModelOption]:
                 "x-api-key": api_key,
                 "anthropic-version": "2023-06-01",
             },
+            params={"limit": 1000},
             timeout=5,
         )
         response.raise_for_status()

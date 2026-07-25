@@ -316,6 +316,12 @@ def test_chat_app_exposes_agents_settings_and_models(tmp_path, monkeypatch):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr(
+        "clearagent.chat.app.httpx.get",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("model discovery should not run without an API key")
+        ),
+    )
     agent = create_agent(
         name="chat_agent",
         model="openrouter:deepseek/deepseek-v4-flash",
@@ -331,6 +337,7 @@ def test_chat_app_exposes_agents_settings_and_models(tmp_path, monkeypatch):
     agents = client.get("/api/agents").json()
     settings = client.get("/api/settings").json()
     models = client.get("/api/models", params={"provider": "openrouter"}).json()
+    openai_models = client.get("/api/models", params={"provider": "openai"}).json()
     anthropic_models = client.get("/api/models", params={"provider": "anthropic"}).json()
 
     assert agents == [{"name": "chat_agent"}]
@@ -338,8 +345,25 @@ def test_chat_app_exposes_agents_settings_and_models(tmp_path, monkeypatch):
     assert settings["model"] == "deepseek/deepseek-v4-flash"
     assert settings["temperature"] == 0.0
     assert settings["thinking"] == "off"
-    assert "openai/gpt-4.1-mini" in [model["id"] for model in models]
-    assert "claude-sonnet-4-20250514" in [model["id"] for model in anthropic_models]
+    model_ids = {model["id"] for model in models}
+    openai_model_ids = {model["id"] for model in openai_models}
+    anthropic_model_ids = {model["id"] for model in anthropic_models}
+    assert {
+        "openai/gpt-5.6-sol",
+        "openai/gpt-5.6-terra",
+        "openai/gpt-5.6-luna",
+        "anthropic/claude-fable-5",
+        "anthropic/claude-opus-5",
+        "anthropic/claude-sonnet-5",
+        "anthropic/claude-haiku-4.5",
+    } <= model_ids
+    assert {"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} <= openai_model_ids
+    assert {
+        "claude-fable-5",
+        "claude-opus-5",
+        "claude-sonnet-5",
+        "claude-haiku-4-5-20251001",
+    } <= anthropic_model_ids
 
     updated = client.put(
         "/api/settings",
@@ -551,6 +575,7 @@ def test_chat_model_listing_uses_remote_catalogs_when_keys_exist(tmp_path, monke
                 json={"data": [{"id": "gpt-test"}, "invalid"]},
             )
         assert kwargs["headers"]["x-api-key"] == "anthropic-key"
+        assert kwargs["params"] == {"limit": 1000}
         return httpx.Response(
             200,
             request=request,
@@ -587,6 +612,27 @@ def test_chat_model_listing_falls_back_when_remote_catalog_fails(tmp_path, monke
     )
     client = TestClient(create_chat_app(agent, chat_db_path=tmp_path / "chat.sqlite"))
 
-    assert client.get("/api/models?provider=openrouter").json()[0]["id"]
-    assert client.get("/api/models?provider=openai").json()[0]["id"] == "gpt-4.1-mini"
-    assert client.get("/api/models?provider=anthropic").json()[0]["id"].startswith("claude")
+    openrouter_ids = [
+        model["id"] for model in client.get("/api/models?provider=openrouter").json()
+    ]
+    openai_ids = [model["id"] for model in client.get("/api/models?provider=openai").json()]
+    anthropic_ids = [
+        model["id"] for model in client.get("/api/models?provider=anthropic").json()
+    ]
+
+    assert openrouter_ids[:7] == [
+        "openai/gpt-5.6-sol",
+        "openai/gpt-5.6-terra",
+        "openai/gpt-5.6-luna",
+        "anthropic/claude-fable-5",
+        "anthropic/claude-opus-5",
+        "anthropic/claude-sonnet-5",
+        "anthropic/claude-haiku-4.5",
+    ]
+    assert openai_ids[:3] == ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]
+    assert anthropic_ids[:4] == [
+        "claude-fable-5",
+        "claude-opus-5",
+        "claude-sonnet-5",
+        "claude-haiku-4-5-20251001",
+    ]

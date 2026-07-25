@@ -240,6 +240,11 @@ controls:
 - `settings_admin_token="..."` requires `X-ClearAgent-Admin-Token` for runtime
   settings changes.
 
+`GET /api/models?provider=<provider>` queries the current OpenAI, Anthropic, or
+OpenRouter model catalog when the matching API key is configured, and otherwise
+returns the bundled fallback snapshot. See [Providers](providers.md) for the
+discovery rules and current fallback families.
+
 Trace viewer endpoints:
 
 - `GET /api/traces` returns recent local trace summaries for the packaged visual

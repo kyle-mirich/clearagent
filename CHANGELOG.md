@@ -21,6 +21,8 @@ ClearAgent library.
   fake provider for tests and offline examples.
 - Verify hosted provider behavior through a bounded opt-in live suite and
   sanitized recordings that replay in the default offline tests.
+- Discover current OpenAI, Anthropic, and OpenRouter model catalogs in local
+  chat, with offline fallbacks that include GPT-5.6 and Claude Opus 5.
 - Debug through the CLI or the bundled loopback-only local chat and trace
   viewer.
 

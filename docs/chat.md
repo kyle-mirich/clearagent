@@ -22,6 +22,10 @@ uv run clearagent chat examples.openrouter_chat.agent:agent
 - `GET /api/sessions` lists recent sessions.
 - `GET /api/sessions/{session_id}` returns one session.
 - `GET /api/sessions/{session_id}/messages` returns persisted messages.
+- `GET /api/models?provider=<provider>` returns the provider's current model
+  catalog when its API key is configured, with a bundled offline fallback. See
+  [Providers](providers.md#model-discovery-in-local-chat) for discovery and
+  fallback behavior.
 - `POST /api/sessions/{session_id}/messages` accepts `{"content": "..."}` and
   streams the assistant response as `text/event-stream` Server-Sent Events.
   Successful responses include a `trace` SSE event with the created `run_id`
