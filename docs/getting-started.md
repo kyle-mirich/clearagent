@@ -1,159 +1,111 @@
 # Getting Started
 
-ClearAgent is a small eval-first Python agent framework. It is built for local
-development with automatic SQLite traces, replayable provider requests, YAML
-eval suites, structured outputs, and pytest integration.
+ClearAgent is a local-first, eval-first Python library. The shortest useful
+feedback loop is:
 
-## Prerequisites
-
-- Python 3.14
-- `uv`
-
-## Install As A Library
-
-In an application that uses ClearAgent, install the current package from the
-public GitHub repository:
-
-```bash
-uv add git+https://github.com/kyle-mirich/clearagent.git
+```text
+define an agent -> run it -> inspect its SQLite trace -> run or generate an eval
 ```
 
-The package is not on PyPI yet. See [Publishing](publishing.md) for the release
-checklist.
+## Install In An External Project
 
-See [Installation](install.md) for provider keys, optional extras, and the
-external-project smoke test.
-
-## Install This Repository
-
-From the repository root:
+Use Python 3.14 or newer and `uv`:
 
 ```bash
-uv sync --all-extras --dev
+uv init --bare --python 3.14 clearagent-quickstart
+cd clearagent-quickstart
+uv add "clearagent @ git+https://github.com/kyle-mirich/clearagent.git"
 ```
 
-Run the full local quality gate:
+The documented pre-release install uses the public GitHub repository. Replace
+it with `uv add clearagent` only after the intended release is visible on PyPI.
+
+## Complete The Offline Feedback Loop
+
+Follow [First Traced Eval](install.md#first-traced-eval) to create `agent.py` and
+`smoke.yaml`. The example uses `FakeProvider`, so it is deterministic and needs
+no provider credentials.
+
+Run the agent, locate the trace, and run the eval:
 
 ```bash
-uv run bash scripts/check.sh
+uv run python agent.py
+uv run clearagent trace list
+uv run clearagent eval agent:agent smoke.yaml
 ```
 
-This command requires at least 90% line coverage across the `clearagent`
-package in addition to passing tests, Ruff, mypy, and documentation-link checks.
+Direct runs and eval cases write to `.clearagent/traces.sqlite` by default. The
+agent script prints its trace path and run ID; `trace list` shows the same run in
+the local database.
 
-## Initialize Local Config
+## Inspect Or Promote A Trace
 
-Create `.clearagent/config.toml`:
+Copy a run ID from `trace list` and inspect the run or turn it into a starter
+eval:
+
+```bash
+uv run clearagent trace show <run_id>
+uv run clearagent trace turns <run_id>
+uv run clearagent request <run_id> --turn 0
+uv run clearagent trace-to-eval <run_id> --out generated.yaml
+```
+
+The generated YAML is a draft based on the observed input and output. Review its
+checks before adding it to regression coverage.
+
+## Configure A Live Provider
+
+After the offline loop works, set only the API key for the provider you use and
+replace the fake provider in `agent.py` with the normal model-backed agent
+configuration. For example:
+
+```bash
+export OPENAI_API_KEY=...
+```
+
+```python
+from clearagent import create_agent
+
+agent = create_agent(
+    name="support_agent",
+    model="openai:gpt-4.1-mini",
+    system_prompt="Help users with order status.",
+)
+```
+
+See [Providers](providers.md) for OpenRouter, local, Ollama, Anthropic, and Google
+model URIs and credentials.
+
+## Optional Local Config
+
+Create `.clearagent/config.toml` when you want CLI tracing settings shared by
+`run`, `eval`, and `chat`:
 
 ```bash
 uv run clearagent init
 ```
 
-Local runtime files are written under `.clearagent/`. Trace data defaults to
-`.clearagent/traces.sqlite`, and chat sessions default to
-`.clearagent/chat.sqlite`.
+Direct Python API calls continue to use values passed to `create_agent`.
 
-The CLI reads `[tracing].enabled` and `[tracing].db_path` from this file for
-`run`, `eval`, and `chat`. Direct Python API calls continue to use the values
-passed to `create_agent`.
+## Contributor Setup
 
-## Create An Agent
-
-```python
-from clearagent import create_agent, tool
-
-
-@tool
-def lookup_order(order_id: str) -> dict:
-    """Look up an order."""
-    return {"order_id": order_id, "status": "shipped", "eta": "Friday"}
-
-
-agent = create_agent(
-    name="support_agent",
-    model="openai:gpt-4.1-mini",
-    system_prompt="Help users with order status and refund questions.",
-    tools=[lookup_order],
-)
-```
-
-The `@tool` decorator converts type hints and the function docstring into an
-OpenAI-compatible tool schema.
-
-## Request Structured Output
-
-```python
-from pydantic import BaseModel
-
-from clearagent import create_agent
-
-
-class TicketLabel(BaseModel):
-    label: str
-    confidence: float
-
-
-agent = create_agent(
-    name="classifier",
-    model="openrouter:openai/gpt-4o-mini",
-    response_format=TicketLabel,
-)
-```
-
-ClearAgent maps the schema to the selected provider request shape and validates
-the parsed output before returning it as `result.structured_output`.
-
-## Run An Example
-
-The customer support example uses a fake provider, so it does not need an API
-key:
+The following commands are only for a checkout of the ClearAgent repository,
+not for an application that depends on the package:
 
 ```bash
+uv sync --all-extras --dev
+uv run bash scripts/check.sh
 uv run python examples/customer_support/agent.py
-```
-
-Run the same agent through an eval suite:
-
-```bash
 uv run clearagent eval examples.customer_support.agent:agent examples/customer_support/evals/smoke.yaml
 ```
 
-## Inspect A Trace
-
-After running an agent or eval, inspect saved runs:
-
-```bash
-uv run clearagent trace list
-uv run clearagent trace show <run_id>
-uv run clearagent trace turns <run_id>
-uv run clearagent request <run_id> --turn 0
-```
-
-Use `replay-request` to export the exact saved provider request for a turn:
-
-```bash
-uv run clearagent replay-request <run_id> --turn 0 --out request.json
-```
-
-## Start The Chat Backend
-
-Serve an agent through the FastAPI chat backend:
-
-```bash
-uv run clearagent chat examples.customer_support.agent:agent
-```
-
-For a live OpenRouter-backed chat demo, set `OPENROUTER_API_KEY` in `.env` and
-run:
-
-```bash
-uv run clearagent chat examples.openrouter_chat.agent:agent
-```
+The quality gate runs the complete tests with at least 90% package line
+coverage, then Ruff, mypy, and the documentation-link checker.
 
 ## Next Steps
 
-- Read [Installation](install.md) for dependency setup in another project.
 - Read [Core Concepts](core-concepts.md) for the mental model.
-- Add an eval suite with [Evals](evals.md).
-- Wire evals into tests with [Pytest](pytest.md).
-- Inspect request snapshots with [Tracing](tracing.md).
+- Add richer checks with [Evals](evals.md).
+- Wire suites into tests with [Pytest](pytest.md).
+- Inspect and replay requests with [Tracing](tracing.md).
+- Use the loopback-only browser client with [Chat](chat.md).

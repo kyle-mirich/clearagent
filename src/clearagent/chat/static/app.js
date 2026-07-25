@@ -5,9 +5,6 @@ const state = {
   messages: [],
   isStreaming: false,
   settings: null,
-  builderMode: false,
-  flow: null,
-  builderPython: "",
   traceMode: false,
   traceRuns: [],
   activeTraceId: null,
@@ -16,19 +13,7 @@ const state = {
 
 const elements = {
   agentSelect: document.querySelector("#agent-select"),
-  builderCode: document.querySelector("#builder-code"),
-  builderForm: document.querySelector("#builder-form"),
-  builderLog: document.querySelector("#builder-log"),
-  builderNodeCount: document.querySelector("#builder-node-count"),
-  builderPrompt: document.querySelector("#builder-prompt"),
-  builderShell: document.querySelector("#builder-shell"),
-  builderToggle: document.querySelector("#builder-toggle"),
   composer: document.querySelector("#composer"),
-  copyPython: document.querySelector("#copy-python"),
-  copyPythonStatus: document.querySelector("#copy-python-status"),
-  flowCanvas: document.querySelector("#flow-canvas"),
-  flowNameInput: document.querySelector("#flow-name-input"),
-  flowPromptInput: document.querySelector("#flow-prompt-input"),
   modelSelect: document.querySelector("#model-select"),
   messages: document.querySelector("#messages"),
   newChat: document.querySelector("#new-chat"),
@@ -95,42 +80,15 @@ function toggleSettings(open) {
   elements.settingsToggle.setAttribute("aria-expanded", String(nextOpen));
 }
 
-function toggleBuilderMode(open) {
-  const nextOpen = typeof open === "boolean" ? open : !state.builderMode;
-  state.builderMode = nextOpen;
-  state.traceMode = false;
-  elements.builderShell.hidden = !nextOpen;
-  elements.traceShell.hidden = true;
-  elements.messages.hidden = nextOpen;
-  elements.composer.hidden = nextOpen;
-  elements.root.classList.toggle("builder-active", nextOpen);
-  elements.root.classList.toggle("trace-active", false);
-  elements.builderToggle.setAttribute("aria-pressed", String(nextOpen));
-  elements.builderToggle.classList.toggle("active", nextOpen);
-  elements.tracesToggle.setAttribute("aria-pressed", "false");
-  elements.tracesToggle.classList.remove("active");
-  if (nextOpen && !state.flow) {
-    loadBuilderFlow().catch((error) => {
-      setStatus("Error");
-      console.error(error);
-    });
-  }
-}
-
 function toggleTraceMode(open) {
   const nextOpen = typeof open === "boolean" ? open : !state.traceMode;
   state.traceMode = nextOpen;
-  state.builderMode = false;
   elements.traceShell.hidden = !nextOpen;
-  elements.builderShell.hidden = true;
   elements.messages.hidden = nextOpen;
   elements.composer.hidden = nextOpen;
   elements.root.classList.toggle("trace-active", nextOpen);
-  elements.root.classList.toggle("builder-active", false);
   elements.tracesToggle.setAttribute("aria-pressed", String(nextOpen));
   elements.tracesToggle.classList.toggle("active", nextOpen);
-  elements.builderToggle.setAttribute("aria-pressed", "false");
-  elements.builderToggle.classList.remove("active");
   if (nextOpen) {
     loadTraceRuns().catch((error) => {
       setStatus("Error");
@@ -482,164 +440,6 @@ function renderJsonDetails(label, value) {
   `;
 }
 
-function nodeTone(kind) {
-  return {
-    input: "Input",
-    agent: "Agent",
-    tool: "Tool",
-    prompt: "Prompt",
-    eval: "Eval",
-    output: "Output",
-  }[kind] || "Node";
-}
-
-function renderFlow() {
-  if (!state.flow) {
-    return;
-  }
-  elements.flowCanvas.innerHTML = "";
-  const heading = document.createElement("div");
-  heading.className = "flow-summary-heading";
-  heading.innerHTML = `
-    <span>Generated flow</span>
-    <strong>${escapeHtml(state.flow.name)}</strong>
-    <small>${escapeHtml(state.flow.description || "Ready to turn into a ClearAgent module.")}</small>
-  `;
-  elements.flowCanvas.append(heading);
-
-  state.flow.nodes.forEach((node, index) => {
-    const step = document.createElement("article");
-    step.className = `flow-step ${node.kind}`;
-    const details = Object.entries(node.config || {})
-      .slice(0, 3)
-      .map(([key, value]) => {
-        const readable = Array.isArray(value) ? value.join(", ") : String(value);
-        return `<li><span>${escapeHtml(key.replaceAll("_", " "))}</span><strong>${escapeHtml(readable)}</strong></li>`;
-      })
-      .join("");
-    step.innerHTML = `
-      <div class="flow-step-index">${String(index + 1).padStart(2, "0")}</div>
-      <div class="flow-step-body">
-        <span class="flow-step-kind">${nodeTone(node.kind)}</span>
-        <h3>${escapeHtml(node.label)}</h3>
-        <ul>${details || `<li><span>role</span><strong>${escapeHtml(state.flow.name)}</strong></li>`}</ul>
-      </div>
-    `;
-    elements.flowCanvas.append(step);
-  });
-  elements.builderNodeCount.textContent = `${state.flow.nodes.length} nodes`;
-}
-
-function syncEditableFlowFields() {
-  if (!state.flow) {
-    return;
-  }
-  const agentNode = state.flow.nodes.find((node) => node.kind === "agent");
-  elements.flowNameInput.value = state.flow.name || "";
-  elements.flowPromptInput.value = agentNode?.config?.system_prompt || "";
-}
-
-function applyFlowEdits() {
-  if (!state.flow) {
-    return;
-  }
-  state.flow.name = elements.flowNameInput.value.trim() || state.flow.name;
-  const agentNode = state.flow.nodes.find((node) => node.kind === "agent");
-  if (agentNode) {
-    agentNode.config = {
-      ...(agentNode.config || {}),
-      system_prompt: elements.flowPromptInput.value.trim(),
-    };
-  }
-  elements.builderCode.textContent = flowToPythonSketch();
-  renderFlow();
-}
-
-function slug(value) {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-}
-
-function flowToPythonSketch() {
-  if (!state.flow) {
-    return state.builderPython || "";
-  }
-  const agentNode = state.flow.nodes.find((node) => node.kind === "agent");
-  const toolNodes = state.flow.nodes.filter((node) => node.kind === "tool");
-  const model = agentNode?.config?.model || "openrouter:openai/gpt-4.1-mini";
-  const prompt = agentNode?.config?.system_prompt || "You are a helpful ClearAgent agent.";
-  const lines = ["from clearagent import create_agent, tool", ""];
-  const toolNames = [];
-  for (const node of toolNodes) {
-    const functionName = node.config?.function || slug(node.label) || "lookup";
-    toolNames.push(functionName);
-    lines.push("@tool");
-    lines.push(`def ${functionName}(query: str) -> dict:`);
-    lines.push(`    """${node.config?.description || node.label}"""`);
-    lines.push('    return {"query": query, "status": "replace with your implementation"}');
-    lines.push("");
-  }
-  lines.push("agent = create_agent(");
-  lines.push(`    name="${slug(state.flow.name) || "builder_agent"}",`);
-  lines.push(`    model="${model}",`);
-  lines.push(`    system_prompt=${JSON.stringify(prompt)},`);
-  lines.push(`    tools=[${toolNames.join(", ")}],`);
-  lines.push(")");
-  return lines.join("\n");
-}
-
-async function copyPythonFlow() {
-  const code = elements.builderCode.textContent.trim();
-  if (!code) {
-    elements.copyPythonStatus.textContent = "Build a flow first.";
-    return;
-  }
-  try {
-    await navigator.clipboard.writeText(code);
-    elements.copyPythonStatus.textContent = "Copied Python flow.";
-  } catch {
-    elements.copyPythonStatus.textContent = "Select the Python flow and copy it.";
-  }
-}
-
-function appendBuilderLog(message) {
-  const item = document.createElement("div");
-  item.className = "builder-log-item";
-  item.textContent = message;
-  elements.builderLog.prepend(item);
-}
-
-async function loadBuilderFlow() {
-  const response = await api("/api/builder/flow");
-  state.flow = await response.json();
-  state.builderPython = "";
-  elements.builderCode.textContent = "";
-  appendBuilderLog("Loaded the current agent as an editable flow.");
-  syncEditableFlowFields();
-  renderFlow();
-}
-
-async function askBuilderAgent() {
-  const instruction = elements.builderPrompt.value.trim();
-  if (!instruction) {
-    return;
-  }
-  elements.builderPrompt.value = "";
-  const response = await api("/api/builder/plan", {
-    method: "POST",
-    body: JSON.stringify({ instruction, flow: state.flow }),
-  });
-  const payload = await response.json();
-  state.flow = payload.flow;
-  state.builderPython = payload.python;
-  elements.builderCode.textContent = payload.python;
-  syncEditableFlowFields();
-  appendBuilderLog(payload.message);
-  renderFlow();
-}
-
 async function loadTraceRuns() {
   const response = await api("/api/traces");
   state.traceRuns = await response.json();
@@ -914,8 +714,6 @@ elements.settingsToggle.addEventListener("click", () => toggleSettings());
 
 elements.settingsClose.addEventListener("click", () => toggleSettings(false));
 
-elements.builderToggle.addEventListener("click", () => toggleBuilderMode());
-
 elements.tracesToggle.addEventListener("click", () => toggleTraceMode());
 
 elements.traceRefresh.addEventListener("click", () => {
@@ -936,28 +734,6 @@ elements.traceDetail.addEventListener("click", (event) => {
     console.error(error);
   });
 });
-
-elements.copyPython.addEventListener("click", () => {
-  copyPythonFlow().catch((error) => {
-    elements.copyPythonStatus.textContent = "Copy failed.";
-    console.error(error);
-  });
-});
-
-elements.builderForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  setStatus("Building flow");
-  try {
-    await askBuilderAgent();
-    setStatus("Ready");
-  } catch (error) {
-    setStatus("Error");
-    appendBuilderLog(`Builder failed: ${error.message}`);
-  }
-});
-
-elements.flowNameInput.addEventListener("input", applyFlowEdits);
-elements.flowPromptInput.addEventListener("input", applyFlowEdits);
 
 elements.providerSelect.addEventListener("change", () => {
   loadModels(elements.providerSelect.value).catch((error) => {

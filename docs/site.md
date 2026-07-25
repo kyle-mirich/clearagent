@@ -6,10 +6,12 @@ maintainers.
 
 ## Start Here
 
-- [Installation](install.md) - install ClearAgent as a dependency, choose
-  provider setup, and run a first external-project agent.
-- [Getting Started](getting-started.md) - install the project, run checks, create
-  local config, and run an example agent.
+- [Installation](install.md) - install ClearAgent as a dependency and complete
+  the external-project agent, trace, and eval path without an API key.
+- [Getting Started](getting-started.md) - understand the first traced-eval loop,
+  then configure a live provider or a repository checkout.
+- [Product Scope](product-scope.md) - the public-library boundary and the
+  near-term maintenance policy.
 - [Core Concepts](core-concepts.md) - understand agents, tools, providers,
   structured outputs, traces, eval suites, graph flows, and chat sessions.
 - [Support Status](status.md) - see which surfaces are stable, young, local-only,
@@ -24,7 +26,7 @@ maintainers.
 - [Providers](providers.md) - choose model URIs and understand provider request
   shapes.
 - [Chat Backend](chat.md) - serve an agent through the FastAPI chat backend,
-  browser client, builder, and trace viewer.
+  browser client, and trace viewer.
 - [Promptfoo](promptfoo.md) - export optional Promptfoo configs and target
   scripts.
 - [Application Flows](flows.md) - understand the main run, eval, replay, and chat

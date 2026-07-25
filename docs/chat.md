@@ -1,8 +1,7 @@
 # Chat Backend
 
 ClearAgent can serve any `Agent` through a small FastAPI app with SQLite-backed
-chat sessions, streamed text responses, a no-code flow builder, and a local
-visual trace viewer.
+chat sessions, streamed text responses, and a local visual trace viewer.
 
 ```bash
 uv run clearagent chat examples.customer_support.agent:agent
@@ -27,9 +26,6 @@ uv run clearagent chat examples.openrouter_chat.agent:agent
   streams the assistant response as `text/event-stream` Server-Sent Events.
   Successful responses include a `trace` SSE event with the created `run_id`
   before `[DONE]` when tracing is enabled.
-- `GET /api/builder/flow` returns the current agent as an editable builder flow.
-- `POST /api/builder/plan` accepts `{"instruction": "..."}` and returns a
-  planned flow, a builder status message, and a runnable Python sketch.
 - `GET /api/traces` returns recent trace run summaries for the visual viewer.
 - `GET /api/triage/runs/{run_id}` returns a local failure-triage payload for a
   trace run, including run rows, turns, model calls, tool calls, detected
@@ -61,8 +57,8 @@ HTTP endpoints and read a streaming response body.
 
 ## Trace Viewer
 
-The packaged browser client has a **Traces** mode next to Chat and Builder.
-It is a local debugging surface for recent `.clearagent/traces.sqlite` runs:
+The packaged browser client has a **Traces** mode next to Chat. It is a local
+debugging surface for recent `.clearagent/traces.sqlite` runs:
 
 - scan recent runs by status, agent, graph, input preview, and output preview
 - open an agent or graph run as an ordered turn timeline
@@ -73,24 +69,6 @@ It is a local debugging surface for recent `.clearagent/traces.sqlite` runs:
 
 The viewer is read-only. Missing run IDs return `404`, and malformed trace JSON
 is surfaced as a detected failure in the triage payload where possible.
-
-## No-Code Builder
-
-The packaged browser client includes a **Builder** mode next to chat. It is a
-local, no-build-step UI for reviewing ClearAgent flows generated from plain
-English:
-
-- inspect the generated flow as a readable step-by-step summary
-- tell the ClearAgent Builder what to create in plain English
-- lightly edit the generated flow name and agent instruction
-- copy the generated Python flow into a real agent module when the shape is ready
-  to implement
-
-The first builder agent is deterministic and local-first. It does not call a
-model; instead it maps common instructions such as "support agent with a refund
-lookup tool and safety evals" into ClearAgent node specs. This keeps the UI
-usable without provider credentials while leaving room for a model-backed flow
-builder later.
 
 ## Safety Boundary
 

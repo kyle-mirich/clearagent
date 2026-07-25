@@ -269,19 +269,11 @@ def test_chat_app_serves_packaged_browser_client(tmp_path):
     assert 'id="agent-select"' in html.text
     assert 'id="settings-toggle"' in html.text
     assert 'id="settings-panel"' in html.text
-    assert 'id="builder-toggle"' in html.text
     assert 'id="traces-toggle"' in html.text
     assert 'id="trace-shell"' in html.text
     assert 'id="trace-runs"' in html.text
     assert 'id="trace-detail"' in html.text
-    assert 'id="flow-canvas"' in html.text
-    assert 'id="builder-prompt"' in html.text
-    assert 'id="flow-name-input"' in html.text
-    assert 'id="flow-prompt-input"' in html.text
-    assert 'id="copy-python"' in html.text
-    assert 'id="copy-python-status"' in html.text
-    assert 'Python flow' in html.text
-    assert "data-node-kind" not in html.text
+    assert "builder" not in html.text.lower()
     assert script.status_code == 200
     assert "parseSseFrames" in script.text
     assert "submitComposer()" in script.text
@@ -290,31 +282,21 @@ def test_chat_app_serves_packaged_browser_client(tmp_path):
     assert "toggleTraceMode" in script.text
     assert "loadTraceRuns" in script.text
     assert "renderTraceDetail" in script.text
-    assert "renderFlow()" in script.text
-    assert "askBuilderAgent()" in script.text
-    assert "syncEditableFlowFields" in script.text
-    assert "applyFlowEdits" in script.text
-    assert "copyPythonFlow" in script.text
     assert "navigator.clipboard.writeText" in script.text
-    assert "addBuilderNode" not in script.text
+    assert "builder" not in script.text.lower()
     assert "saveSettings" in script.text
     assert "renderMarkdown" in script.text
     assert styles.status_code == 200
     assert ".message.assistant" in styles.text
-    assert ".builder-shell" in styles.text
     assert ".trace-shell" in styles.text
     assert ".trace-run" in styles.text
     assert ".trace-step" in styles.text
-    assert ".flow-summary" in styles.text
-    assert ".flow-step" in styles.text
-    assert ".flow-node" not in styles.text
-    assert ".builder-edit-panel" in styles.text
-    assert ".code-export-header" in styles.text
+    assert "builder" not in styles.text.lower()
     assert ".sidebar-collapsed" in styles.text
     assert "@media (max-width: 760px)" in styles.text
 
 
-def test_chat_app_exposes_default_builder_flow(tmp_path):
+def test_chat_app_does_not_expose_builder_endpoints(tmp_path):
     agent = create_agent(
         name="chat_agent",
         model="openrouter:deepseek/deepseek-v4-flash",
@@ -323,46 +305,11 @@ def test_chat_app_exposes_default_builder_flow(tmp_path):
     app = create_chat_app(agent, chat_db_path=tmp_path / "chat.sqlite")
     client = TestClient(app)
 
-    response = client.get("/api/builder/flow")
-
-    assert response.status_code == 200
-    flow = response.json()
-    assert flow["name"] == "chat_agent flow"
-    assert [node["kind"] for node in flow["nodes"]] == ["input", "agent", "output"]
-    assert flow["nodes"][1]["config"]["model"] == "openrouter:deepseek/deepseek-v4-flash"
-    assert flow["edges"] == [
-        {"source": "input", "target": "agent"},
-        {"source": "agent", "target": "output"},
-    ]
-
-
-def test_chat_app_builder_agent_generates_nodes_from_plain_english(tmp_path):
-    agent = create_agent(
-        name="support_agent",
-        model="openai:gpt-4.1-mini",
-        system_prompt="Help users with order status.",
-        provider=FakeProvider(),
-    )
-    app = create_chat_app(agent, chat_db_path=tmp_path / "chat.sqlite")
-    client = TestClient(app)
-
-    response = client.post(
+    assert client.get("/api/builder/flow").status_code == 404
+    assert client.post(
         "/api/builder/plan",
-        json={"instruction": "Build a support agent with a refund lookup tool and safety evals."},
-    )
-
-    assert response.status_code == 200
-    payload = response.json()
-    flow = payload["flow"]
-    kinds = [node["kind"] for node in flow["nodes"]]
-    assert "input" in kinds
-    assert "agent" in kinds
-    assert "tool" in kinds
-    assert "eval" in kinds
-    assert "output" in kinds
-    assert "refund" in flow["nodes"][2]["label"].lower()
-    assert "connected" in payload["message"].lower()
-    assert "create_agent" in payload["python"]
+        json={"instruction": "Build a support agent."},
+    ).status_code == 404
 
 
 def test_chat_app_exposes_agents_settings_and_models(tmp_path, monkeypatch):

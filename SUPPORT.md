@@ -1,11 +1,19 @@
 # Support
 
+## Alpha Expectations
+
+ClearAgent is maintained on a best-effort basis during the alpha. Public APIs
+can change between releases, but user-visible changes should be documented in
+the changelog and migration guidance should accompany incompatible changes.
+There is no hosted support service or guaranteed response time.
+
 ## Usage Questions
 
 Start with the [documentation index](docs/site.md), especially
 [Installation](docs/install.md), [Providers](docs/providers.md), and the
-[Reference](docs/reference.md). Search existing issues before opening a new
-question or bug report.
+[Reference](docs/reference.md). Search existing issues before opening a
+[usage question](https://github.com/kyle-mirich/clearagent/issues/new/choose) or
+bug report.
 
 ## Bug Reports
 

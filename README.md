@@ -2,9 +2,10 @@
 
 [![CI](https://github.com/kyle-mirich/clearagent/actions/workflows/ci.yml/badge.svg)](https://github.com/kyle-mirich/clearagent/actions/workflows/ci.yml)
 [![Python 3.14](https://img.shields.io/badge/python-3.14-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/kyle-mirich/clearagent/blob/main/LICENSE)
 
-ClearAgent is a tiny eval-first Python agent framework.
+ClearAgent is a local-first, eval-first Python library for building and testing
+small agents.
 
 It is built for developers who want plain Python tools, OpenAI-compatible provider
 support, automatic local SQLite traces, exact provider request snapshots,
@@ -13,6 +14,13 @@ outputs, and pytest integration.
 
 It is not a general-purpose graph framework, observability SaaS, or deployment
 platform.
+
+The product is deliberately narrow: define an agent in ordinary Python, inspect
+the local trace, turn observed behavior into a repeatable eval, and replay or
+compare changes. Read the
+[Product Scope](https://github.com/kyle-mirich/clearagent/blob/main/docs/product-scope.md)
+for the public-library boundary and the capabilities reserved for ClearAgent
+Studio.
 
 ClearAgent is currently an alpha project. The stable local core is tested and
 documented, while newer provider and chat surfaces are labeled in the
@@ -44,82 +52,93 @@ in this package.
 
 ## Quickstart
 
-Install the current package directly from the public GitHub repository:
+Use Python 3.14 or newer and
+[`uv`](https://docs.astral.sh/uv/getting-started/installation/). This pre-release
+path creates a project and installs ClearAgent from its public GitHub repository
+without assuming that a PyPI release exists:
 
 ```bash
-uv add git+https://github.com/kyle-mirich/clearagent.git
+uv init --bare --python 3.14 clearagent-quickstart
+cd clearagent-quickstart
+uv add "clearagent @ git+https://github.com/kyle-mirich/clearagent.git"
 ```
 
-The package is not on PyPI yet. Release maintainers can follow the documented
-[publishing checklist](https://github.com/kyle-mirich/clearagent/blob/main/docs/publishing.md).
-
-Use Python 3.14 or newer.
-
-Contributor setup from this repository:
-
-```bash
-uv sync --all-extras --dev
-uv run pytest
-uv run clearagent init
-uv run clearagent chat examples.customer_support.agent:agent
-```
-
-Run the full local quality gate with:
-
-```bash
-uv run bash scripts/check.sh
-```
-
-The gate runs the full test suite with source coverage, requires at least 90%
-line coverage for `clearagent`, then runs Ruff, mypy, and documentation-link
-checks. CI runs the same gate on Python 3.14.
+Create `agent.py` with a deterministic provider so the first run needs no API
+key:
 
 ```python
 from clearagent import create_agent, tool
+from clearagent.providers.base import FakeProvider, ProviderResponse, ToolCall
 
 
 @tool
 def lookup_order(order_id: str) -> dict:
+    """Look up an order."""
     return {"order_id": order_id, "status": "shipped", "eta": "Friday"}
+
 
 agent = create_agent(
     name="support_agent",
     model="openai:gpt-4.1-mini",
     system_prompt="Help users with order status.",
     tools=[lookup_order],
+    provider=FakeProvider(
+        [
+            ProviderResponse.fake_tool_call(
+                ToolCall(
+                    id="call_lookup_order",
+                    name="lookup_order",
+                    arguments={"order_id": "A123"},
+                )
+            ),
+            ProviderResponse.fake_text("Order A123 has shipped and arrives Friday."),
+        ]
+    ),
 )
+
+
+if __name__ == "__main__":
+    result = agent.run("Where is order A123?")
+    print(result.output)
+    print(f"trace: {result.trace_db_path}")
+    print(f"run_id: {result.run_id}")
 ```
 
-Structured outputs can be requested with a Pydantic model:
+Run the agent and locate its local SQLite trace:
 
-```python
-from pydantic import BaseModel
-
-class TicketLabel(BaseModel):
-    label: str
-    confidence: float
-
-agent = create_agent(
-    name="classifier",
-    model="openrouter:openai/gpt-4o-mini",
-    response_format=TicketLabel,
-)
+```bash
+uv run python agent.py
+uv run clearagent trace list
 ```
 
-ClearAgent maps structured outputs to each provider's native request shape where
-available and validates the parsed output before returning it as
-`result.structured_output`. Streaming runs validate the joined response before
-the trace is marked successful.
+Create `smoke.yaml`:
 
-Turn an observed trace into a regression test and export a readable report:
+```yaml
+name: quickstart
+cases:
+  - name: shipped order
+    input: Where is order A123?
+    checks:
+      - contains: shipped
+      - contains: Friday
+```
+
+Run the eval. It imports a fresh `agent` object, executes the case, and records
+another local trace:
+
+```bash
+uv run clearagent eval agent:agent smoke.yaml
+```
+
+Copy a run ID from `trace list` to turn any observed trace into a starter eval:
 
 ```bash
 uv run clearagent trace-to-eval <run_id> --out generated.yaml
-uv run clearagent trace-report <run_id> --out report.md
 ```
 
-The packaged local browser client also includes a read-only **Traces** mode for
-debugging recent runs, graph node turns, model requests, and tool call results.
+See [Installation](https://github.com/kyle-mirich/clearagent/blob/main/docs/install.md)
+for live provider keys and optional extras. Release maintainers can follow the
+[publishing checklist](https://github.com/kyle-mirich/clearagent/blob/main/docs/publishing.md).
 
 ## Project Structure
 
@@ -130,6 +149,20 @@ debugging recent runs, graph node turns, model requests, and tool call results.
 - `examples/` - runnable agents, graph flows, and eval suites
 - `docs/` - curated guides, architecture notes, and API/CLI reference
 - `scripts/check.sh` - the same 90%-coverage quality gate used by CI
+
+## Contributor Setup
+
+These commands are for a checkout of this repository, not for applications that
+depend on ClearAgent:
+
+```bash
+uv sync --all-extras --dev
+uv run bash scripts/check.sh
+```
+
+The gate runs the full tests with at least 90% package line coverage, followed
+by Ruff, mypy, and documentation-link checks. CI runs the same gate on Python
+3.14.
 
 ## Documentation
 

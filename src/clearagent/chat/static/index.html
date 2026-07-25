@@ -47,7 +47,6 @@
             </div>
           </div>
           <div class="header-actions">
-            <button id="builder-toggle" class="mode-button" type="button" aria-pressed="false">Builder</button>
             <button id="traces-toggle" class="mode-button" type="button" aria-pressed="false">Traces</button>
             <button id="settings-toggle" class="icon-button settings-toggle" type="button" aria-label="Open settings">
               <span aria-hidden="true"></span>
@@ -95,48 +94,6 @@
         </form>
 
         <section id="messages" class="messages" aria-live="polite"></section>
-
-        <section id="builder-shell" class="builder-shell" hidden>
-          <div class="builder-edit-panel" aria-label="Generated flow details">
-            <label for="flow-name-input">
-              <span>Flow name</span>
-              <input id="flow-name-input" type="text" autocomplete="off" />
-            </label>
-            <label for="flow-prompt-input">
-              <span>Agent instruction</span>
-              <textarea id="flow-prompt-input" rows="2"></textarea>
-            </label>
-          </div>
-          <div class="builder-workspace">
-            <div id="flow-canvas" class="flow-summary" aria-label="Generated flow summary"></div>
-            <aside class="builder-agent" aria-label="ClearAgent builder bot">
-              <div class="builder-agent-header">
-                <span>ClearAgent Builder</span>
-                <strong id="builder-node-count">0 nodes</strong>
-              </div>
-              <div id="builder-log" class="builder-log"></div>
-              <form id="builder-form" class="builder-form">
-                <textarea
-                  id="builder-prompt"
-                  rows="4"
-                  placeholder="Tell ClearAgent what flow to build"
-                ></textarea>
-                <button type="submit">Build flow</button>
-              </form>
-              <section class="code-export" aria-label="Generated Python flow">
-                <div class="code-export-header">
-                  <div>
-                    <span>Python flow</span>
-                    <small>Paste into an agent module</small>
-                  </div>
-                  <button id="copy-python" type="button">Copy</button>
-                </div>
-                <pre><code id="builder-code"></code></pre>
-                <div id="copy-python-status" class="copy-python-status" role="status" aria-live="polite"></div>
-              </section>
-            </aside>
-          </div>
-        </section>
 
         <section id="trace-shell" class="trace-shell" hidden>
           <aside class="trace-runs-panel" aria-label="Recent trace runs">

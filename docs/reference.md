@@ -227,19 +227,15 @@ providers do not read `OPENAI_API_KEY`.
 ## Chat App Factory
 
 `create_chat_app(agent)` serves the local browser chat backend and packaged
-no-code builder. Runtime settings mutation is disabled by default. Optional
-safety controls:
+trace viewer. Runtime settings mutation is disabled by default. Optional safety
+controls:
 
 - `allow_settings_mutation=True` enables `PUT /api/settings`.
 - `settings_admin_token="..."` requires `X-ClearAgent-Admin-Token` for runtime
   settings changes.
 
-Builder endpoints:
+Trace viewer endpoints:
 
-- `GET /api/builder/flow` returns the active agent as a flow with input, agent,
-  and output nodes.
-- `POST /api/builder/plan` accepts an `instruction` and optional current `flow`,
-  then returns the updated flow plus a generated Python sketch.
 - `GET /api/traces` returns recent local trace summaries for the packaged visual
   trace viewer.
 - `GET /api/triage/runs/{run_id}` returns a local trace triage payload with run

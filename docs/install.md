@@ -8,7 +8,8 @@ set up this repository for development.
 - Python 3.14 or newer
 - `uv` for the documented commands
 
-ClearAgent writes local runtime files under `.clearagent/` by default:
+ClearAgent uses these default local runtime paths when the corresponding
+features run:
 
 - `.clearagent/config.toml`
 - `.clearagent/traces.sqlite`
@@ -18,20 +19,24 @@ Do not commit local `.clearagent/*.sqlite` files.
 
 ## Install As A Dependency
 
-Add the current ClearAgent package to another project directly from GitHub:
+Before a ClearAgent release is visible on PyPI, start a fresh application
+project and add the current package directly from GitHub:
 
 ```bash
-uv add git+https://github.com/kyle-mirich/clearagent.git
+uv init --bare --python 3.14 clearagent-quickstart
+cd clearagent-quickstart
+uv add "clearagent @ git+https://github.com/kyle-mirich/clearagent.git"
 ```
 
-With `pip`, use:
+For an existing project that uses `pip`, install the same Git dependency with:
 
 ```bash
 python -m pip install "clearagent @ git+https://github.com/kyle-mirich/clearagent.git"
 ```
 
-The package is not on PyPI yet. See [Publishing](publishing.md) for the release
-checklist.
+Only replace the Git dependency with `uv add clearagent` or `pip install
+clearagent` after the intended release is visible on PyPI. Maintainers can
+follow the [Publishing](publishing.md) checklist.
 
 ## Provider Setup
 
@@ -52,18 +57,20 @@ Optional extras install provider SDKs for applications that want those SDKs in
 the same environment:
 
 ```bash
-uv add "clearagent[openai]"
-uv add "clearagent[anthropic]"
-uv add "clearagent[google]"
-uv add "clearagent[all]"
+uv add "clearagent[openai] @ git+https://github.com/kyle-mirich/clearagent.git"
+uv add "clearagent[anthropic] @ git+https://github.com/kyle-mirich/clearagent.git"
+uv add "clearagent[google] @ git+https://github.com/kyle-mirich/clearagent.git"
+uv add "clearagent[all] @ git+https://github.com/kyle-mirich/clearagent.git"
 ```
 
-## First Agent
+## First Traced Eval
 
-Create `support_agent.py` in your project:
+This offline path proves the installed package before you configure a live
+provider. Create `agent.py` in the new project:
 
 ```python
 from clearagent import create_agent, tool
+from clearagent.providers.base import FakeProvider, ProviderResponse, ToolCall
 
 
 @tool
@@ -75,26 +82,64 @@ def lookup_order(order_id: str) -> dict:
 agent = create_agent(
     name="support_agent",
     model="openai:gpt-4.1-mini",
-    system_prompt="Help users with order status and refund questions.",
+    system_prompt="Help users with order status.",
     tools=[lookup_order],
+    provider=FakeProvider(
+        [
+            ProviderResponse.fake_tool_call(
+                ToolCall(
+                    id="call_lookup_order",
+                    name="lookup_order",
+                    arguments={"order_id": "A123"},
+                )
+            ),
+            ProviderResponse.fake_text("Order A123 has shipped and arrives Friday."),
+        ]
+    ),
 )
 
 
 if __name__ == "__main__":
     result = agent.run("Where is order A123?")
     print(result.output)
+    print(f"trace: {result.trace_db_path}")
+    print(f"run_id: {result.run_id}")
 ```
 
-Run it directly:
+Run the agent, confirm that `.clearagent/traces.sqlite` exists, and list the
+recorded run:
 
 ```bash
-uv run python support_agent.py
+uv run python agent.py
+test -f .clearagent/traces.sqlite
+uv run clearagent trace list
 ```
 
-Or through the installed CLI:
+Create `smoke.yaml`:
+
+```yaml
+name: quickstart
+cases:
+  - name: shipped order
+    input: Where is order A123?
+    checks:
+      - contains: shipped
+      - contains: Friday
+```
+
+Run the eval. The CLI imports a fresh `agent` object, so the deterministic
+provider queue starts full again:
 
 ```bash
-uv run clearagent run support_agent:agent "Where is order A123?"
+uv run clearagent eval agent:agent smoke.yaml
+```
+
+The command prints `1 passed, 0 failed` and writes another run to the same local
+trace database. To promote an observed run into a starter eval instead, copy its
+ID from `trace list` and run:
+
+```bash
+uv run clearagent trace-to-eval <run_id> --out generated.yaml
 ```
 
 ## Repository Development Setup

@@ -7,17 +7,20 @@ and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## 0.1.0 - Unreleased
 
-- Initial local-first agent runtime with SQLite traces.
-- Added provider request snapshots, replay, eval suites, pytest integration,
-  Promptfoo export, native Anthropic and Google adapters, structured outputs,
-  graph flows, and a local chat backend.
-- Added PyPI-ready package metadata, installation docs, and publishing
-  checklist.
-- Hardened provider streaming, trace/eval lifecycle finalization, graph bounds,
-  typed tool serialization, usage aggregation, and local chat safety defaults.
-- Added the public `TraceStore` protocol and canonical optional eval dataset
-  fields while keeping hosted planning and optimization outside the MIT package.
-- Added contributor, support, conduct, and security policies plus a 90% minimum
-  package coverage requirement in CI.
-- Expanded reader-facing API, architecture, eval, chat, and support-status
-  documentation.
+First alpha of the MIT-licensed, Python 3.14, local-first and eval-first
+ClearAgent library.
+
+- Define agents and typed tools in plain Python, including validated structured
+  outputs and bounded linear flows.
+- Record local SQLite traces with provider request snapshots, tool calls,
+  reports, replay, and response diffs.
+- Run YAML eval suites, generate starter evals from traces, save baselines, and
+  integrate evals with pytest.
+- Use OpenAI-compatible, Anthropic, and Google provider adapters, plus a
+  deterministic fake provider for tests and offline examples.
+- Debug through the CLI or the bundled loopback-only local chat and trace
+  viewer.
+
+Hosted workspaces, natural-language agent generation, dataset or judge
+generation, prompt optimization, deployment, billing, and collaboration are not
+part of this package.
