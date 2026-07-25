@@ -314,16 +314,18 @@ class Agent:
 
 
 def _assistant_message(response: ProviderResponse) -> Message:
-    metadata = {}
+    metadata: dict[str, Any] = {}
     if response.tool_calls:
-        metadata["tool_calls"] = [
-            {
+        metadata["tool_calls"] = []
+        for call in response.tool_calls:
+            serialized_call = {
                 "id": call.id,
                 "type": "function",
                 "function": {"name": call.name, "arguments": call.arguments},
             }
-            for call in response.tool_calls
-        ]
+            if call.provider_data:
+                serialized_call["provider_data"] = call.provider_data
+            metadata["tool_calls"].append(serialized_call)
     return Message(role="assistant", content=response.output_text, metadata=metadata)
 
 

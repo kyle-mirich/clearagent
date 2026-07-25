@@ -1,3 +1,4 @@
+import json
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Literal, Protocol
 
@@ -17,6 +18,7 @@ class ToolCall(BaseModel):
     id: str
     name: str
     arguments: dict[str, Any] = Field(default_factory=dict)
+    provider_data: dict[str, Any] = Field(default_factory=dict)
 
 
 class Usage(BaseModel):
@@ -150,7 +152,7 @@ def build_openai_body(
     extra: dict[str, Any],
     response_format: ResponseFormatInput = None,
 ) -> dict[str, Any]:
-    body: dict[str, Any] = {"model": model, "messages": dump_messages(messages)}
+    body: dict[str, Any] = {"model": model, "messages": _openai_messages(messages)}
     if tools:
         body["tools"] = [tool_schema(fn) for fn in tools]
     if tool_choice is not None:
@@ -171,6 +173,17 @@ def build_openai_body(
         }
     body.update(extra)
     return body
+
+
+def _openai_messages(messages: list[Message]) -> list[dict[str, Any]]:
+    dumped = dump_messages(messages)
+    for message in dumped:
+        for call in message.get("tool_calls") or []:
+            function = call.get("function") or {}
+            arguments = function.get("arguments")
+            if isinstance(arguments, dict):
+                function["arguments"] = json.dumps(arguments, separators=(",", ":"))
+    return dumped
 
 
 class FakeProvider:

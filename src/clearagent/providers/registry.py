@@ -2,6 +2,7 @@ from clearagent.providers.anthropic import AnthropicProvider
 from clearagent.providers.base import Provider, ProviderRequest
 from clearagent.providers.google import GoogleGenAIProvider
 from clearagent.providers.model_uri import parse_model_uri
+from clearagent.providers.openai import OpenAIResponsesProvider
 from clearagent.providers.openai_compatible import OpenAICompatibleProvider
 
 
@@ -11,7 +12,9 @@ def provider_for_model(model_uri: str) -> Provider:
         return AnthropicProvider()
     if parsed.provider == "google":
         return GoogleGenAIProvider()
-    if parsed.provider in {"openai", "openrouter", "local", "ollama"}:
+    if parsed.provider == "openai":
+        return OpenAIResponsesProvider()
+    if parsed.provider in {"openrouter", "local", "ollama"}:
         base_url = _openai_compatible_base_url(parsed.provider, parsed.base_url)
         api_key_env = _openai_compatible_api_key_env(parsed.provider)
         return OpenAICompatibleProvider(
@@ -41,6 +44,4 @@ def _openai_compatible_base_url(provider: str, parsed_base_url: str | None) -> s
 def _openai_compatible_api_key_env(provider: str) -> str | None:
     if provider == "openrouter":
         return "OPENROUTER_API_KEY"
-    if provider == "openai":
-        return "OPENAI_API_KEY"
     return None

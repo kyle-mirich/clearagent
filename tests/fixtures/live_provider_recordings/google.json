@@ -1,0 +1,948 @@
+{
+  "availability": {
+    "requested_model": "gemini-3.5-flash-lite",
+    "status": "pass"
+  },
+  "capabilities": {
+    "baseline_quality_gate": {
+      "comparison": {
+        "improvements": [],
+        "regressions": [],
+        "unchanged_failures": [],
+        "unchanged_passes": [
+          "tool trace and final response"
+        ]
+      },
+      "status": "pass"
+    },
+    "basic_agent": {
+      "output": "LIVE_OK",
+      "status": "pass",
+      "trace": {
+        "model_calls": [
+          {
+            "api_shape": "google_genai",
+            "ended_at": "[VOLATILE_TIME]",
+            "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
+            "error_json": null,
+            "id": "[VOLATILE_ID]",
+            "latency_ms": null,
+            "model": "gemini-3.5-flash-lite",
+            "provider": "google",
+            "request_json": {
+              "api_shape": "google_genai",
+              "body": {
+                "contents": [
+                  {
+                    "parts": [
+                      {
+                        "text": "Reply with exactly LIVE_OK and nothing else."
+                      }
+                    ],
+                    "role": "user"
+                  }
+                ],
+                "generationConfig": {
+                  "maxOutputTokens": 96
+                },
+                "systemInstruction": {
+                  "parts": [
+                    {
+                      "text": "Follow the user's requested output format exactly."
+                    }
+                  ]
+                }
+              },
+              "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
+              "headers_snapshot": {
+                "x-goog-api-key": "[REDACTED]"
+              },
+              "model": "gemini-3.5-flash-lite",
+              "provider": "google",
+              "response_format": null
+            },
+            "response_json": {
+              "finish_reason": "STOP",
+              "model": "gemini-3.5-flash-lite",
+              "output_text": "LIVE_OK",
+              "provider": "google",
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "text": "LIVE_OK",
+                          "thoughtSignature": "[VOLATILE_SIGNATURE]"
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-3.5-flash-lite",
+                "responseId": "[VOLATILE_ID]",
+                "usageMetadata": {
+                  "candidatesTokenCount": 3,
+                  "promptTokenCount": 21,
+                  "promptTokensDetails": [
+                    {
+                      "modality": "TEXT",
+                      "tokenCount": 21
+                    }
+                  ],
+                  "serviceTier": "standard",
+                  "totalTokenCount": 24
+                }
+              },
+              "structured_output": null,
+              "tool_calls": [],
+              "usage": {
+                "completion_tokens": 3,
+                "cost_usd": null,
+                "prompt_tokens": 21,
+                "total_tokens": 24
+              }
+            },
+            "run_id": "[VOLATILE_ID]",
+            "started_at": "[VOLATILE_TIME]",
+            "status": "ok",
+            "turn_id": "[VOLATILE_ID]",
+            "usage_json": {
+              "completion_tokens": 3,
+              "cost_usd": null,
+              "prompt_tokens": 21,
+              "total_tokens": 24
+            }
+          }
+        ],
+        "run": {
+          "agent_name": "live_google_basic",
+          "ended_at": "[VOLATILE_TIME]",
+          "final_output": "LIVE_OK",
+          "graph_name": null,
+          "id": "[VOLATILE_ID]",
+          "metadata_json": {},
+          "root_input": "[Message(role='user', content='Reply with exactly LIVE_OK and nothing else.', tool_call_id=None, name=None, metadata={})]",
+          "started_at": "[VOLATILE_TIME]",
+          "status": "ok",
+          "total_completion_tokens": 3,
+          "total_cost_usd": null,
+          "total_latency_ms": 0,
+          "total_prompt_tokens": 21
+        },
+        "tool_calls": [],
+        "turns": [
+          {
+            "ended_at": "[VOLATILE_TIME]",
+            "error_json": null,
+            "final_output": "LIVE_OK",
+            "id": "[VOLATILE_ID]",
+            "input_messages_json": [
+              {
+                "content": "Follow the user's requested output format exactly.",
+                "role": "system"
+              },
+              {
+                "content": "Reply with exactly LIVE_OK and nothing else.",
+                "role": "user"
+              }
+            ],
+            "latency_ms": 0,
+            "node_name": "live_google_basic",
+            "output_messages_json": [
+              {
+                "content": "Follow the user's requested output format exactly.",
+                "role": "system"
+              },
+              {
+                "content": "Reply with exactly LIVE_OK and nothing else.",
+                "role": "user"
+              },
+              {
+                "content": "LIVE_OK",
+                "role": "assistant"
+              }
+            ],
+            "run_id": "[VOLATILE_ID]",
+            "started_at": "[VOLATILE_TIME]",
+            "status": "ok",
+            "turn_index": 0
+          }
+        ]
+      },
+      "usage": {
+        "completion_tokens": 3,
+        "cost_usd": null,
+        "prompt_tokens": 21,
+        "total_tokens": 24
+      }
+    },
+    "evaluation": {
+      "aggregate": {
+        "failed": 0,
+        "passed": 1
+      },
+      "fixture_dataset": {
+        "cases": [
+          {
+            "checks": [
+              {
+                "equals": "TOOL_OK"
+              },
+              {
+                "expected_tools": [
+                  "compatibility_token"
+                ]
+              },
+              {
+                "called_tool": "compatibility_token"
+              },
+              {
+                "trace_provider": "google"
+              },
+              {
+                "max_turns": 2
+              }
+            ],
+            "expected": null,
+            "input": "Call compatibility_token with code alpha, then return its result.",
+            "name": "tool trace and final response",
+            "reference_notes": null,
+            "split": null,
+            "tags": []
+          }
+        ],
+        "defaults": {},
+        "description": null,
+        "matrix": {},
+        "name": "live_google_tool_eval",
+        "type": "output"
+      },
+      "report": {
+        "agent_name": "live_google_tool_eval",
+        "failed": 0,
+        "model": "google:gemini-3.5-flash-lite",
+        "passed": 1,
+        "results": [
+          {
+            "case_name": "tool trace and final response",
+            "checks": [
+              {
+                "actual": "TOOL_OK",
+                "expected": "TOOL_OK",
+                "message": "equals expected output",
+                "name": "equals",
+                "passed": true
+              },
+              {
+                "actual": [
+                  "compatibility_token"
+                ],
+                "expected": [
+                  "compatibility_token"
+                ],
+                "message": "expected tools ['compatibility_token']",
+                "name": "expected_tools",
+                "passed": true
+              },
+              {
+                "actual": [
+                  "compatibility_token"
+                ],
+                "expected": "compatibility_token",
+                "message": "called tool 'compatibility_token'",
+                "name": "called_tool",
+                "passed": true
+              },
+              {
+                "actual": [
+                  "google",
+                  "google"
+                ],
+                "expected": "google",
+                "message": "trace provider 'google'",
+                "name": "trace_provider",
+                "passed": true
+              },
+              {
+                "actual": 2,
+                "expected": 2,
+                "message": "at most 2 turns",
+                "name": "max_turns",
+                "passed": true
+              }
+            ],
+            "cost_usd": null,
+            "final_output": "TOOL_OK",
+            "input": "Call compatibility_token with code alpha, then return its result.",
+            "latency_ms": 0,
+            "passed": true,
+            "run_id": "[VOLATILE_ID]",
+            "suite_name": "live_google_tool_eval",
+            "trace_db_path": "/var/folders/1c/t6f736kd5l93nbw161zqtdyh0000gn/T/clearagent-live-ib968mxe/google-tool-eval.sqlite",
+            "variant": {}
+          }
+        ],
+        "skipped": 0,
+        "suite_name": "live_google_tool_eval",
+        "suite_run_id": "suite_run_62aa3a78e8d1",
+        "suite_type": "output"
+      },
+      "status": "pass"
+    },
+    "streaming": {
+      "chunks": [
+        "STREAM_",
+        "OK"
+      ],
+      "output": "STREAM_OK",
+      "status": "pass",
+      "trace": {
+        "model_calls": [
+          {
+            "api_shape": "google_genai",
+            "ended_at": "[VOLATILE_TIME]",
+            "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
+            "error_json": null,
+            "id": "[VOLATILE_ID]",
+            "latency_ms": null,
+            "model": "gemini-3.5-flash-lite",
+            "provider": "google",
+            "request_json": {
+              "api_shape": "google_genai",
+              "body": {
+                "contents": [
+                  {
+                    "parts": [
+                      {
+                        "text": "Reply with exactly STREAM_OK and nothing else."
+                      }
+                    ],
+                    "role": "user"
+                  }
+                ],
+                "generationConfig": {
+                  "maxOutputTokens": 96
+                },
+                "systemInstruction": {
+                  "parts": [
+                    {
+                      "text": "Follow the user's requested output format exactly."
+                    }
+                  ]
+                }
+              },
+              "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
+              "headers_snapshot": {
+                "x-goog-api-key": "[REDACTED]"
+              },
+              "model": "gemini-3.5-flash-lite",
+              "provider": "google",
+              "response_format": null
+            },
+            "response_json": {
+              "finish_reason": null,
+              "model": "gemini-3.5-flash-lite",
+              "output_text": "STREAM_OK",
+              "provider": "google",
+              "raw": {
+                "streamed": true
+              },
+              "structured_output": null,
+              "tool_calls": [],
+              "usage": null
+            },
+            "run_id": "[VOLATILE_ID]",
+            "started_at": "[VOLATILE_TIME]",
+            "status": "ok",
+            "turn_id": "[VOLATILE_ID]",
+            "usage_json": null
+          }
+        ],
+        "run": {
+          "agent_name": "live_google_stream",
+          "ended_at": "[VOLATILE_TIME]",
+          "final_output": "STREAM_OK",
+          "graph_name": null,
+          "id": "[VOLATILE_ID]",
+          "metadata_json": {},
+          "root_input": "Reply with exactly STREAM_OK and nothing else.",
+          "started_at": "[VOLATILE_TIME]",
+          "status": "ok",
+          "total_completion_tokens": null,
+          "total_cost_usd": null,
+          "total_latency_ms": 0,
+          "total_prompt_tokens": null
+        },
+        "tool_calls": [],
+        "turns": [
+          {
+            "ended_at": "[VOLATILE_TIME]",
+            "error_json": null,
+            "final_output": "STREAM_OK",
+            "id": "[VOLATILE_ID]",
+            "input_messages_json": [
+              {
+                "content": "Follow the user's requested output format exactly.",
+                "role": "system"
+              },
+              {
+                "content": "Reply with exactly STREAM_OK and nothing else.",
+                "role": "user"
+              }
+            ],
+            "latency_ms": 0,
+            "node_name": "live_google_stream",
+            "output_messages_json": [
+              {
+                "content": "Follow the user's requested output format exactly.",
+                "role": "system"
+              },
+              {
+                "content": "Reply with exactly STREAM_OK and nothing else.",
+                "role": "user"
+              },
+              {
+                "content": "STREAM_OK",
+                "role": "assistant"
+              }
+            ],
+            "run_id": "[VOLATILE_ID]",
+            "started_at": "[VOLATILE_TIME]",
+            "status": "ok",
+            "turn_index": 0
+          }
+        ]
+      }
+    },
+    "system_and_messages": {
+      "evidence": "basic_agent used a system prompt and list[Message] input",
+      "status": "pass"
+    },
+    "tool_round_trip": {
+      "final_output": "TOOL_OK",
+      "status": "pass",
+      "tool_calls": [
+        {
+          "args_json": {
+            "code": "alpha"
+          },
+          "ended_at": "[VOLATILE_TIME]",
+          "error_json": null,
+          "id": "[VOLATILE_ID]",
+          "latency_ms": null,
+          "result_json": "TOOL_OK",
+          "run_id": "[VOLATILE_ID]",
+          "started_at": "[VOLATILE_TIME]",
+          "status": "ok",
+          "tool_name": "compatibility_token",
+          "turn_id": "[VOLATILE_ID]"
+        }
+      ],
+      "trace": {
+        "model_calls": [
+          {
+            "api_shape": "google_genai",
+            "ended_at": "[VOLATILE_TIME]",
+            "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
+            "error_json": null,
+            "id": "[VOLATILE_ID]",
+            "latency_ms": null,
+            "model": "gemini-3.5-flash-lite",
+            "provider": "google",
+            "request_json": {
+              "api_shape": "google_genai",
+              "body": {
+                "contents": [
+                  {
+                    "parts": [
+                      {
+                        "text": "Call compatibility_token with code alpha, then return its result."
+                      }
+                    ],
+                    "role": "user"
+                  }
+                ],
+                "generationConfig": {
+                  "maxOutputTokens": 96
+                },
+                "systemInstruction": {
+                  "parts": [
+                    {
+                      "text": "Always call compatibility_token when asked. After receiving its result, reply with exactly that result and nothing else."
+                    }
+                  ]
+                },
+                "tools": [
+                  {
+                    "functionDeclarations": [
+                      {
+                        "description": "Return the deterministic token used by the compatibility suite.",
+                        "name": "compatibility_token",
+                        "parameters": {
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
+              "headers_snapshot": {
+                "x-goog-api-key": "[REDACTED]"
+              },
+              "model": "gemini-3.5-flash-lite",
+              "provider": "google",
+              "response_format": null
+            },
+            "response_json": {
+              "finish_reason": "STOP",
+              "model": "gemini-3.5-flash-lite",
+              "output_text": null,
+              "provider": "google",
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "functionCall": {
+                            "args": {
+                              "code": "alpha"
+                            },
+                            "id": "[VOLATILE_ID]",
+                            "name": "compatibility_token"
+                          },
+                          "thoughtSignature": "[VOLATILE_SIGNATURE]"
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishMessage": "Model generated function call(s).",
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-3.5-flash-lite",
+                "responseId": "[VOLATILE_ID]",
+                "usageMetadata": {
+                  "candidatesTokenCount": 16,
+                  "promptTokenCount": 83,
+                  "promptTokensDetails": [
+                    {
+                      "modality": "TEXT",
+                      "tokenCount": 83
+                    }
+                  ],
+                  "serviceTier": "standard",
+                  "totalTokenCount": 99
+                }
+              },
+              "structured_output": null,
+              "tool_calls": [
+                {
+                  "arguments": {
+                    "code": "alpha"
+                  },
+                  "id": "[VOLATILE_ID]",
+                  "name": "compatibility_token",
+                  "provider_data": {
+                    "thoughtSignature": "[VOLATILE_SIGNATURE]"
+                  }
+                }
+              ],
+              "usage": {
+                "completion_tokens": 16,
+                "cost_usd": null,
+                "prompt_tokens": 83,
+                "total_tokens": 99
+              }
+            },
+            "run_id": "[VOLATILE_ID]",
+            "started_at": "[VOLATILE_TIME]",
+            "status": "ok",
+            "turn_id": "[VOLATILE_ID]",
+            "usage_json": {
+              "completion_tokens": 16,
+              "cost_usd": null,
+              "prompt_tokens": 83,
+              "total_tokens": 99
+            }
+          },
+          {
+            "api_shape": "google_genai",
+            "ended_at": "[VOLATILE_TIME]",
+            "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
+            "error_json": null,
+            "id": "[VOLATILE_ID]",
+            "latency_ms": null,
+            "model": "gemini-3.5-flash-lite",
+            "provider": "google",
+            "request_json": {
+              "api_shape": "google_genai",
+              "body": {
+                "contents": [
+                  {
+                    "parts": [
+                      {
+                        "text": "Call compatibility_token with code alpha, then return its result."
+                      }
+                    ],
+                    "role": "user"
+                  },
+                  {
+                    "parts": [
+                      {
+                        "functionCall": {
+                          "args": {
+                            "code": "alpha"
+                          },
+                          "id": "[VOLATILE_ID]",
+                          "name": "compatibility_token"
+                        },
+                        "thoughtSignature": "[VOLATILE_SIGNATURE]"
+                      }
+                    ],
+                    "role": "model"
+                  },
+                  {
+                    "parts": [
+                      {
+                        "functionResponse": {
+                          "id": "[VOLATILE_ID]",
+                          "name": "compatibility_token",
+                          "response": {
+                            "result": "TOOL_OK"
+                          }
+                        }
+                      }
+                    ],
+                    "role": "user"
+                  }
+                ],
+                "generationConfig": {
+                  "maxOutputTokens": 96
+                },
+                "systemInstruction": {
+                  "parts": [
+                    {
+                      "text": "Always call compatibility_token when asked. After receiving its result, reply with exactly that result and nothing else."
+                    }
+                  ]
+                },
+                "tools": [
+                  {
+                    "functionDeclarations": [
+                      {
+                        "description": "Return the deterministic token used by the compatibility suite.",
+                        "name": "compatibility_token",
+                        "parameters": {
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
+              "headers_snapshot": {
+                "x-goog-api-key": "[REDACTED]"
+              },
+              "model": "gemini-3.5-flash-lite",
+              "provider": "google",
+              "response_format": null
+            },
+            "response_json": {
+              "finish_reason": "STOP",
+              "model": "gemini-3.5-flash-lite",
+              "output_text": "TOOL_OK",
+              "provider": "google",
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "text": "TOOL_OK",
+                          "thoughtSignature": "[VOLATILE_SIGNATURE]"
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-3.5-flash-lite",
+                "responseId": "[VOLATILE_ID]",
+                "usageMetadata": {
+                  "candidatesTokenCount": 3,
+                  "promptTokenCount": 115,
+                  "promptTokensDetails": [
+                    {
+                      "modality": "TEXT",
+                      "tokenCount": 115
+                    }
+                  ],
+                  "serviceTier": "standard",
+                  "totalTokenCount": 118
+                }
+              },
+              "structured_output": null,
+              "tool_calls": [],
+              "usage": {
+                "completion_tokens": 3,
+                "cost_usd": null,
+                "prompt_tokens": 115,
+                "total_tokens": 118
+              }
+            },
+            "run_id": "[VOLATILE_ID]",
+            "started_at": "[VOLATILE_TIME]",
+            "status": "ok",
+            "turn_id": "[VOLATILE_ID]",
+            "usage_json": {
+              "completion_tokens": 3,
+              "cost_usd": null,
+              "prompt_tokens": 115,
+              "total_tokens": 118
+            }
+          }
+        ],
+        "run": {
+          "agent_name": "live_google_tool_eval",
+          "ended_at": "[VOLATILE_TIME]",
+          "final_output": "TOOL_OK",
+          "graph_name": null,
+          "id": "[VOLATILE_ID]",
+          "metadata_json": {},
+          "root_input": "Call compatibility_token with code alpha, then return its result.",
+          "started_at": "[VOLATILE_TIME]",
+          "status": "ok",
+          "total_completion_tokens": 19,
+          "total_cost_usd": null,
+          "total_latency_ms": 0,
+          "total_prompt_tokens": 198
+        },
+        "tool_calls": [
+          {
+            "args_json": {
+              "code": "alpha"
+            },
+            "ended_at": "[VOLATILE_TIME]",
+            "error_json": null,
+            "id": "[VOLATILE_ID]",
+            "latency_ms": null,
+            "result_json": "TOOL_OK",
+            "run_id": "[VOLATILE_ID]",
+            "started_at": "[VOLATILE_TIME]",
+            "status": "ok",
+            "tool_name": "compatibility_token",
+            "turn_id": "[VOLATILE_ID]"
+          }
+        ],
+        "turns": [
+          {
+            "ended_at": "[VOLATILE_TIME]",
+            "error_json": null,
+            "final_output": null,
+            "id": "[VOLATILE_ID]",
+            "input_messages_json": [
+              {
+                "content": "Always call compatibility_token when asked. After receiving its result, reply with exactly that result and nothing else.",
+                "role": "system"
+              },
+              {
+                "content": "Call compatibility_token with code alpha, then return its result.",
+                "role": "user"
+              }
+            ],
+            "latency_ms": 0,
+            "node_name": "live_google_tool_eval",
+            "output_messages_json": [
+              {
+                "content": "Always call compatibility_token when asked. After receiving its result, reply with exactly that result and nothing else.",
+                "role": "system"
+              },
+              {
+                "content": "Call compatibility_token with code alpha, then return its result.",
+                "role": "user"
+              },
+              {
+                "content": null,
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "function": {
+                      "arguments": {
+                        "code": "alpha"
+                      },
+                      "name": "compatibility_token"
+                    },
+                    "id": "[VOLATILE_ID]",
+                    "provider_data": {
+                      "thoughtSignature": "[VOLATILE_SIGNATURE]"
+                    },
+                    "type": "function"
+                  }
+                ]
+              },
+              {
+                "content": "TOOL_OK",
+                "name": "compatibility_token",
+                "role": "tool",
+                "tool_call_id": "[VOLATILE_ID]"
+              }
+            ],
+            "run_id": "[VOLATILE_ID]",
+            "started_at": "[VOLATILE_TIME]",
+            "status": "ok",
+            "turn_index": 0
+          },
+          {
+            "ended_at": "[VOLATILE_TIME]",
+            "error_json": null,
+            "final_output": "TOOL_OK",
+            "id": "[VOLATILE_ID]",
+            "input_messages_json": [
+              {
+                "content": "Always call compatibility_token when asked. After receiving its result, reply with exactly that result and nothing else.",
+                "role": "system"
+              },
+              {
+                "content": "Call compatibility_token with code alpha, then return its result.",
+                "role": "user"
+              },
+              {
+                "content": null,
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "function": {
+                      "arguments": {
+                        "code": "alpha"
+                      },
+                      "name": "compatibility_token"
+                    },
+                    "id": "[VOLATILE_ID]",
+                    "provider_data": {
+                      "thoughtSignature": "[VOLATILE_SIGNATURE]"
+                    },
+                    "type": "function"
+                  }
+                ]
+              },
+              {
+                "content": "TOOL_OK",
+                "name": "compatibility_token",
+                "role": "tool",
+                "tool_call_id": "[VOLATILE_ID]"
+              }
+            ],
+            "latency_ms": 0,
+            "node_name": "live_google_tool_eval",
+            "output_messages_json": [
+              {
+                "content": "Always call compatibility_token when asked. After receiving its result, reply with exactly that result and nothing else.",
+                "role": "system"
+              },
+              {
+                "content": "Call compatibility_token with code alpha, then return its result.",
+                "role": "user"
+              },
+              {
+                "content": null,
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "function": {
+                      "arguments": {
+                        "code": "alpha"
+                      },
+                      "name": "compatibility_token"
+                    },
+                    "id": "[VOLATILE_ID]",
+                    "provider_data": {
+                      "thoughtSignature": "[VOLATILE_SIGNATURE]"
+                    },
+                    "type": "function"
+                  }
+                ]
+              },
+              {
+                "content": "TOOL_OK",
+                "name": "compatibility_token",
+                "role": "tool",
+                "tool_call_id": "[VOLATILE_ID]"
+              },
+              {
+                "content": "TOOL_OK",
+                "role": "assistant"
+              }
+            ],
+            "run_id": "[VOLATILE_ID]",
+            "started_at": "[VOLATILE_TIME]",
+            "status": "ok",
+            "turn_index": 1
+          }
+        ]
+      }
+    },
+    "trace_promotion": {
+      "generated_eval_yaml": "name: recorded_google_tool\ntype: output\ncases:\n- name: recorded tool response\n  input: Call compatibility_token with code alpha, then return its result.\n  checks:\n  - contains: TOOL_OK\n",
+      "parsed": {
+        "cases": [
+          {
+            "checks": [
+              {
+                "contains": "TOOL_OK"
+              }
+            ],
+            "input": "Call compatibility_token with code alpha, then return its result.",
+            "name": "recorded tool response"
+          }
+        ],
+        "name": "recorded_google_tool",
+        "type": "output"
+      },
+      "status": "pass"
+    },
+    "trace_serialization": {
+      "evidence": "basic_agent.trace",
+      "status": "pass"
+    }
+  },
+  "recording": {
+    "actual_model": "gemini-3.5-flash-lite",
+    "api_shape": "google_genai",
+    "max_output_tokens": 96,
+    "model_note": "Selected as a currently supported inexpensive general-purpose generateContent model from Google's model catalog.",
+    "overall_status": "pass",
+    "provider": "google",
+    "recorded_at": "2026-07-25T22:53:07Z",
+    "request_cap": 4,
+    "request_count": 4,
+    "requested_model": "gemini-3.5-flash-lite",
+    "retry_count": 0,
+    "version": 1
+  }
+}

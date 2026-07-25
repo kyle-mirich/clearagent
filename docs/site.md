@@ -25,6 +25,8 @@ maintainers.
 - [Pytest](pytest.md) - run ClearAgent eval suites from normal pytest tests.
 - [Providers](providers.md) - choose model URIs and understand provider request
   shapes.
+- [Live Provider Compatibility](live-provider-compatibility.md) - run the
+  bounded opt-in provider suite and refresh sanitized recordings.
 - [Chat Backend](chat.md) - serve an agent through the FastAPI chat backend,
   browser client, and trace viewer.
 - [Promptfoo](promptfoo.md) - export optional Promptfoo configs and target

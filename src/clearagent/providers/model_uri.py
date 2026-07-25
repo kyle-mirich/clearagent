@@ -13,7 +13,7 @@ class ModelURI(BaseModel):
 
 
 API_SHAPES = {
-    "openai": "openai_chat_completions",
+    "openai": "openai_responses",
     "openrouter": "openai_chat_completions",
     "local": "openai_chat_completions",
     "ollama": "openai_chat_completions",

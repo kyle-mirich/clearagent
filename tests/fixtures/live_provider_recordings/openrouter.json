@@ -1,0 +1,970 @@
+{
+  "availability": {
+    "requested_model": "xiaomi/mimo-v2.5",
+    "status": "pass"
+  },
+  "capabilities": {
+    "baseline_quality_gate": {
+      "comparison": {
+        "improvements": [],
+        "regressions": [],
+        "unchanged_failures": [],
+        "unchanged_passes": [
+          "tool trace and final response"
+        ]
+      },
+      "status": "pass"
+    },
+    "basic_agent": {
+      "output": "LIVE_OK",
+      "status": "pass",
+      "trace": {
+        "model_calls": [
+          {
+            "api_shape": "openai_chat_completions",
+            "ended_at": "[VOLATILE_TIME]",
+            "endpoint": "https://openrouter.ai/api/v1/chat/completions",
+            "error_json": null,
+            "id": "[VOLATILE_ID]",
+            "latency_ms": null,
+            "model": "xiaomi/mimo-v2.5",
+            "provider": "openrouter",
+            "request_json": {
+              "api_shape": "openai_chat_completions",
+              "body": {
+                "max_tokens": 96,
+                "messages": [
+                  {
+                    "content": "Follow the user's requested output format exactly.",
+                    "role": "system"
+                  },
+                  {
+                    "content": "Reply with exactly LIVE_OK and nothing else.",
+                    "role": "user"
+                  }
+                ],
+                "model": "xiaomi/mimo-v2.5"
+              },
+              "endpoint": "https://openrouter.ai/api/v1/chat/completions",
+              "headers_snapshot": {
+                "authorization": "[REDACTED]"
+              },
+              "model": "xiaomi/mimo-v2.5",
+              "provider": "openrouter",
+              "response_format": null
+            },
+            "response_json": {
+              "finish_reason": "stop",
+              "model": "xiaomi/mimo-v2.5",
+              "output_text": "LIVE_OK",
+              "provider": "openrouter",
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "LIVE_OK",
+                      "reasoning": "The user asks to reply with exactly \"LIVE_OK\" and nothing else. So output should be exactly that string.",
+                      "reasoning_details": [
+                        {
+                          "format": "unknown",
+                          "index": 0,
+                          "text": "The user asks to reply with exactly \"LIVE_OK\" and nothing else. So output should be exactly that string.",
+                          "type": "reasoning.text"
+                        }
+                      ],
+                      "refusal": null,
+                      "role": "assistant"
+                    },
+                    "native_finish_reason": "stop"
+                  }
+                ],
+                "created": "[VOLATILE_TIME]",
+                "id": "[VOLATILE_ID]",
+                "model": "xiaomi/mimo-v2.5",
+                "object": "chat.completion",
+                "provider": "Xiaomi",
+                "service_tier": null,
+                "system_fingerprint": null,
+                "usage": {
+                  "completion_tokens": 30,
+                  "completion_tokens_details": {
+                    "audio_tokens": 0,
+                    "image_tokens": 0,
+                    "reasoning_tokens": 24
+                  },
+                  "cost": 1.246e-05,
+                  "cost_details": {
+                    "upstream_inference_completions_cost": 8.4e-06,
+                    "upstream_inference_cost": 1.246e-05,
+                    "upstream_inference_prompt_cost": 4.06e-06
+                  },
+                  "is_byok": false,
+                  "prompt_tokens": 29,
+                  "prompt_tokens_details": {
+                    "audio_tokens": 0,
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0,
+                    "video_tokens": 0
+                  },
+                  "total_tokens": 59
+                }
+              },
+              "structured_output": null,
+              "tool_calls": [],
+              "usage": {
+                "completion_tokens": 30,
+                "cost_usd": 1.246e-05,
+                "prompt_tokens": 29,
+                "total_tokens": 59
+              }
+            },
+            "run_id": "[VOLATILE_ID]",
+            "started_at": "[VOLATILE_TIME]",
+            "status": "ok",
+            "turn_id": "[VOLATILE_ID]",
+            "usage_json": {
+              "completion_tokens": 30,
+              "cost_usd": 1.246e-05,
+              "prompt_tokens": 29,
+              "total_tokens": 59
+            }
+          }
+        ],
+        "run": {
+          "agent_name": "live_openrouter_basic",
+          "ended_at": "[VOLATILE_TIME]",
+          "final_output": "LIVE_OK",
+          "graph_name": null,
+          "id": "[VOLATILE_ID]",
+          "metadata_json": {},
+          "root_input": "[Message(role='user', content='Reply with exactly LIVE_OK and nothing else.', tool_call_id=None, name=None, metadata={})]",
+          "started_at": "[VOLATILE_TIME]",
+          "status": "ok",
+          "total_completion_tokens": 30,
+          "total_cost_usd": 1.246e-05,
+          "total_latency_ms": 0,
+          "total_prompt_tokens": 29
+        },
+        "tool_calls": [],
+        "turns": [
+          {
+            "ended_at": "[VOLATILE_TIME]",
+            "error_json": null,
+            "final_output": "LIVE_OK",
+            "id": "[VOLATILE_ID]",
+            "input_messages_json": [
+              {
+                "content": "Follow the user's requested output format exactly.",
+                "role": "system"
+              },
+              {
+                "content": "Reply with exactly LIVE_OK and nothing else.",
+                "role": "user"
+              }
+            ],
+            "latency_ms": 0,
+            "node_name": "live_openrouter_basic",
+            "output_messages_json": [
+              {
+                "content": "Follow the user's requested output format exactly.",
+                "role": "system"
+              },
+              {
+                "content": "Reply with exactly LIVE_OK and nothing else.",
+                "role": "user"
+              },
+              {
+                "content": "LIVE_OK",
+                "role": "assistant"
+              }
+            ],
+            "run_id": "[VOLATILE_ID]",
+            "started_at": "[VOLATILE_TIME]",
+            "status": "ok",
+            "turn_index": 0
+          }
+        ]
+      },
+      "usage": {
+        "completion_tokens": 30,
+        "cost_usd": 1.246e-05,
+        "prompt_tokens": 29,
+        "total_tokens": 59
+      }
+    },
+    "evaluation": {
+      "aggregate": {
+        "failed": 0,
+        "passed": 1
+      },
+      "fixture_dataset": {
+        "cases": [
+          {
+            "checks": [
+              {
+                "equals": "TOOL_OK"
+              },
+              {
+                "expected_tools": [
+                  "compatibility_token"
+                ]
+              },
+              {
+                "called_tool": "compatibility_token"
+              },
+              {
+                "trace_provider": "openrouter"
+              },
+              {
+                "max_turns": 2
+              }
+            ],
+            "expected": null,
+            "input": "Call compatibility_token with code alpha, then return its result.",
+            "name": "tool trace and final response",
+            "reference_notes": null,
+            "split": null,
+            "tags": []
+          }
+        ],
+        "defaults": {},
+        "description": null,
+        "matrix": {},
+        "name": "live_openrouter_tool_eval",
+        "type": "output"
+      },
+      "report": {
+        "agent_name": "live_openrouter_tool_eval",
+        "failed": 0,
+        "model": "openrouter:xiaomi/mimo-v2.5",
+        "passed": 1,
+        "results": [
+          {
+            "case_name": "tool trace and final response",
+            "checks": [
+              {
+                "actual": "TOOL_OK",
+                "expected": "TOOL_OK",
+                "message": "equals expected output",
+                "name": "equals",
+                "passed": true
+              },
+              {
+                "actual": [
+                  "compatibility_token"
+                ],
+                "expected": [
+                  "compatibility_token"
+                ],
+                "message": "expected tools ['compatibility_token']",
+                "name": "expected_tools",
+                "passed": true
+              },
+              {
+                "actual": [
+                  "compatibility_token"
+                ],
+                "expected": "compatibility_token",
+                "message": "called tool 'compatibility_token'",
+                "name": "called_tool",
+                "passed": true
+              },
+              {
+                "actual": [
+                  "openrouter",
+                  "openrouter"
+                ],
+                "expected": "openrouter",
+                "message": "trace provider 'openrouter'",
+                "name": "trace_provider",
+                "passed": true
+              },
+              {
+                "actual": 2,
+                "expected": 2,
+                "message": "at most 2 turns",
+                "name": "max_turns",
+                "passed": true
+              }
+            ],
+            "cost_usd": 0.00010893,
+            "final_output": "TOOL_OK",
+            "input": "Call compatibility_token with code alpha, then return its result.",
+            "latency_ms": 0,
+            "passed": true,
+            "run_id": "[VOLATILE_ID]",
+            "suite_name": "live_openrouter_tool_eval",
+            "trace_db_path": "/var/folders/1c/t6f736kd5l93nbw161zqtdyh0000gn/T/clearagent-live-1mbssw4d/openrouter-tool-eval.sqlite",
+            "variant": {}
+          }
+        ],
+        "skipped": 0,
+        "suite_name": "live_openrouter_tool_eval",
+        "suite_run_id": "suite_run_6d644f132fe7",
+        "suite_type": "output"
+      },
+      "status": "pass"
+    },
+    "streaming": {
+      "chunks": [
+        "STREAM",
+        "_OK"
+      ],
+      "output": "STREAM_OK",
+      "status": "pass",
+      "trace": {
+        "model_calls": [
+          {
+            "api_shape": "openai_chat_completions",
+            "ended_at": "[VOLATILE_TIME]",
+            "endpoint": "https://openrouter.ai/api/v1/chat/completions",
+            "error_json": null,
+            "id": "[VOLATILE_ID]",
+            "latency_ms": null,
+            "model": "xiaomi/mimo-v2.5",
+            "provider": "openrouter",
+            "request_json": {
+              "api_shape": "openai_chat_completions",
+              "body": {
+                "max_tokens": 96,
+                "messages": [
+                  {
+                    "content": "Follow the user's requested output format exactly.",
+                    "role": "system"
+                  },
+                  {
+                    "content": "Reply with exactly STREAM_OK and nothing else.",
+                    "role": "user"
+                  }
+                ],
+                "model": "xiaomi/mimo-v2.5"
+              },
+              "endpoint": "https://openrouter.ai/api/v1/chat/completions",
+              "headers_snapshot": {
+                "authorization": "[REDACTED]"
+              },
+              "model": "xiaomi/mimo-v2.5",
+              "provider": "openrouter",
+              "response_format": null
+            },
+            "response_json": {
+              "finish_reason": null,
+              "model": "xiaomi/mimo-v2.5",
+              "output_text": "STREAM_OK",
+              "provider": "openrouter",
+              "raw": {
+                "streamed": true
+              },
+              "structured_output": null,
+              "tool_calls": [],
+              "usage": null
+            },
+            "run_id": "[VOLATILE_ID]",
+            "started_at": "[VOLATILE_TIME]",
+            "status": "ok",
+            "turn_id": "[VOLATILE_ID]",
+            "usage_json": null
+          }
+        ],
+        "run": {
+          "agent_name": "live_openrouter_stream",
+          "ended_at": "[VOLATILE_TIME]",
+          "final_output": "STREAM_OK",
+          "graph_name": null,
+          "id": "[VOLATILE_ID]",
+          "metadata_json": {},
+          "root_input": "Reply with exactly STREAM_OK and nothing else.",
+          "started_at": "[VOLATILE_TIME]",
+          "status": "ok",
+          "total_completion_tokens": null,
+          "total_cost_usd": null,
+          "total_latency_ms": 0,
+          "total_prompt_tokens": null
+        },
+        "tool_calls": [],
+        "turns": [
+          {
+            "ended_at": "[VOLATILE_TIME]",
+            "error_json": null,
+            "final_output": "STREAM_OK",
+            "id": "[VOLATILE_ID]",
+            "input_messages_json": [
+              {
+                "content": "Follow the user's requested output format exactly.",
+                "role": "system"
+              },
+              {
+                "content": "Reply with exactly STREAM_OK and nothing else.",
+                "role": "user"
+              }
+            ],
+            "latency_ms": 0,
+            "node_name": "live_openrouter_stream",
+            "output_messages_json": [
+              {
+                "content": "Follow the user's requested output format exactly.",
+                "role": "system"
+              },
+              {
+                "content": "Reply with exactly STREAM_OK and nothing else.",
+                "role": "user"
+              },
+              {
+                "content": "STREAM_OK",
+                "role": "assistant"
+              }
+            ],
+            "run_id": "[VOLATILE_ID]",
+            "started_at": "[VOLATILE_TIME]",
+            "status": "ok",
+            "turn_index": 0
+          }
+        ]
+      }
+    },
+    "system_and_messages": {
+      "evidence": "basic_agent used a system prompt and list[Message] input",
+      "status": "pass"
+    },
+    "tool_round_trip": {
+      "final_output": "TOOL_OK",
+      "status": "pass",
+      "tool_calls": [
+        {
+          "args_json": {
+            "code": "alpha"
+          },
+          "ended_at": "[VOLATILE_TIME]",
+          "error_json": null,
+          "id": "[VOLATILE_ID]",
+          "latency_ms": null,
+          "result_json": "TOOL_OK",
+          "run_id": "[VOLATILE_ID]",
+          "started_at": "[VOLATILE_TIME]",
+          "status": "ok",
+          "tool_name": "compatibility_token",
+          "turn_id": "[VOLATILE_ID]"
+        }
+      ],
+      "trace": {
+        "model_calls": [
+          {
+            "api_shape": "openai_chat_completions",
+            "ended_at": "[VOLATILE_TIME]",
+            "endpoint": "https://openrouter.ai/api/v1/chat/completions",
+            "error_json": null,
+            "id": "[VOLATILE_ID]",
+            "latency_ms": null,
+            "model": "xiaomi/mimo-v2.5",
+            "provider": "openrouter",
+            "request_json": {
+              "api_shape": "openai_chat_completions",
+              "body": {
+                "max_tokens": 96,
+                "messages": [
+                  {
+                    "content": "Always call compatibility_token when asked. After receiving its result, reply with exactly that result and nothing else.",
+                    "role": "system"
+                  },
+                  {
+                    "content": "Call compatibility_token with code alpha, then return its result.",
+                    "role": "user"
+                  }
+                ],
+                "model": "xiaomi/mimo-v2.5",
+                "tool_choice": "auto",
+                "tools": [
+                  {
+                    "function": {
+                      "description": "Return the deterministic token used by the compatibility suite.",
+                      "name": "compatibility_token",
+                      "parameters": {
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "code"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "type": "function"
+                  }
+                ]
+              },
+              "endpoint": "https://openrouter.ai/api/v1/chat/completions",
+              "headers_snapshot": {
+                "authorization": "[REDACTED]"
+              },
+              "model": "xiaomi/mimo-v2.5",
+              "provider": "openrouter",
+              "response_format": null
+            },
+            "response_json": {
+              "finish_reason": "tool_calls",
+              "model": "xiaomi/mimo-v2.5",
+              "output_text": null,
+              "provider": "openrouter",
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": null,
+                      "reasoning": "The user wants me to call compatibility_token with code \"alpha\" and then return the result.",
+                      "reasoning_details": [
+                        {
+                          "format": "unknown",
+                          "index": 0,
+                          "text": "The user wants me to call compatibility_token with code \"alpha\" and then return the result.",
+                          "type": "reasoning.text"
+                        }
+                      ],
+                      "refusal": null,
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"code\": \"alpha\"}",
+                            "name": "compatibility_token"
+                          },
+                          "id": "[VOLATILE_ID]",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
+                    },
+                    "native_finish_reason": "tool_calls"
+                  }
+                ],
+                "created": "[VOLATILE_TIME]",
+                "id": "[VOLATILE_ID]",
+                "model": "xiaomi/mimo-v2.5",
+                "object": "chat.completion",
+                "provider": "Xiaomi",
+                "service_tier": null,
+                "system_fingerprint": null,
+                "usage": {
+                  "completion_tokens": 44,
+                  "completion_tokens_details": {
+                    "audio_tokens": 0,
+                    "image_tokens": 0,
+                    "reasoning_tokens": 19
+                  },
+                  "cost": 5.18e-05,
+                  "cost_details": {
+                    "upstream_inference_completions_cost": 1.232e-05,
+                    "upstream_inference_cost": 5.18e-05,
+                    "upstream_inference_prompt_cost": 3.948e-05
+                  },
+                  "is_byok": false,
+                  "prompt_tokens": 282,
+                  "prompt_tokens_details": {
+                    "audio_tokens": 0,
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0,
+                    "video_tokens": 0
+                  },
+                  "total_tokens": 326
+                }
+              },
+              "structured_output": null,
+              "tool_calls": [
+                {
+                  "arguments": {
+                    "code": "alpha"
+                  },
+                  "id": "[VOLATILE_ID]",
+                  "name": "compatibility_token"
+                }
+              ],
+              "usage": {
+                "completion_tokens": 44,
+                "cost_usd": 5.18e-05,
+                "prompt_tokens": 282,
+                "total_tokens": 326
+              }
+            },
+            "run_id": "[VOLATILE_ID]",
+            "started_at": "[VOLATILE_TIME]",
+            "status": "ok",
+            "turn_id": "[VOLATILE_ID]",
+            "usage_json": {
+              "completion_tokens": 44,
+              "cost_usd": 5.18e-05,
+              "prompt_tokens": 282,
+              "total_tokens": 326
+            }
+          },
+          {
+            "api_shape": "openai_chat_completions",
+            "ended_at": "[VOLATILE_TIME]",
+            "endpoint": "https://openrouter.ai/api/v1/chat/completions",
+            "error_json": null,
+            "id": "[VOLATILE_ID]",
+            "latency_ms": null,
+            "model": "xiaomi/mimo-v2.5",
+            "provider": "openrouter",
+            "request_json": {
+              "api_shape": "openai_chat_completions",
+              "body": {
+                "max_tokens": 96,
+                "messages": [
+                  {
+                    "content": "Always call compatibility_token when asked. After receiving its result, reply with exactly that result and nothing else.",
+                    "role": "system"
+                  },
+                  {
+                    "content": "Call compatibility_token with code alpha, then return its result.",
+                    "role": "user"
+                  },
+                  {
+                    "content": null,
+                    "role": "assistant",
+                    "tool_calls": [
+                      {
+                        "function": {
+                          "arguments": {
+                            "code": "alpha"
+                          },
+                          "name": "compatibility_token"
+                        },
+                        "id": "[VOLATILE_ID]",
+                        "type": "function"
+                      }
+                    ]
+                  },
+                  {
+                    "content": "TOOL_OK",
+                    "name": "compatibility_token",
+                    "role": "tool",
+                    "tool_call_id": "[VOLATILE_ID]"
+                  }
+                ],
+                "model": "xiaomi/mimo-v2.5",
+                "tool_choice": "auto",
+                "tools": [
+                  {
+                    "function": {
+                      "description": "Return the deterministic token used by the compatibility suite.",
+                      "name": "compatibility_token",
+                      "parameters": {
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "code"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "type": "function"
+                  }
+                ]
+              },
+              "endpoint": "https://openrouter.ai/api/v1/chat/completions",
+              "headers_snapshot": {
+                "authorization": "[REDACTED]"
+              },
+              "model": "xiaomi/mimo-v2.5",
+              "provider": "openrouter",
+              "response_format": null
+            },
+            "response_json": {
+              "finish_reason": "stop",
+              "model": "xiaomi/mimo-v2.5",
+              "output_text": "TOOL_OK",
+              "provider": "openrouter",
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "TOOL_OK",
+                      "reasoning": "The user asked me to call compatibility_token with code \"alpha\" and then return its result. The function returned \"TOOL_OK\". I need to return exactly that result and nothing else.",
+                      "reasoning_details": [
+                        {
+                          "format": "unknown",
+                          "index": 0,
+                          "text": "The user asked me to call compatibility_token with code \"alpha\" and then return its result. The function returned \"TOOL_OK\". I need to return exactly that result and nothing else.",
+                          "type": "reasoning.text"
+                        }
+                      ],
+                      "refusal": null,
+                      "role": "assistant"
+                    },
+                    "native_finish_reason": "stop"
+                  }
+                ],
+                "created": "[VOLATILE_TIME]",
+                "id": "[VOLATILE_ID]",
+                "model": "xiaomi/mimo-v2.5",
+                "object": "chat.completion",
+                "provider": "Parasail",
+                "service_tier": null,
+                "system_fingerprint": null,
+                "usage": {
+                  "completion_tokens": 44,
+                  "completion_tokens_details": {
+                    "audio_tokens": 0,
+                    "image_tokens": 0,
+                    "reasoning_tokens": 45
+                  },
+                  "cost": 5.713e-05,
+                  "cost_details": {
+                    "upstream_inference_completions_cost": 1.232e-05,
+                    "upstream_inference_cost": 5.713e-05,
+                    "upstream_inference_prompt_cost": 4.481e-05
+                  },
+                  "is_byok": false,
+                  "prompt_tokens": 322,
+                  "prompt_tokens_details": {
+                    "audio_tokens": 0,
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 3,
+                    "video_tokens": 0
+                  },
+                  "total_tokens": 366
+                }
+              },
+              "structured_output": null,
+              "tool_calls": [],
+              "usage": {
+                "completion_tokens": 44,
+                "cost_usd": 5.713e-05,
+                "prompt_tokens": 322,
+                "total_tokens": 366
+              }
+            },
+            "run_id": "[VOLATILE_ID]",
+            "started_at": "[VOLATILE_TIME]",
+            "status": "ok",
+            "turn_id": "[VOLATILE_ID]",
+            "usage_json": {
+              "completion_tokens": 44,
+              "cost_usd": 5.713e-05,
+              "prompt_tokens": 322,
+              "total_tokens": 366
+            }
+          }
+        ],
+        "run": {
+          "agent_name": "live_openrouter_tool_eval",
+          "ended_at": "[VOLATILE_TIME]",
+          "final_output": "TOOL_OK",
+          "graph_name": null,
+          "id": "[VOLATILE_ID]",
+          "metadata_json": {},
+          "root_input": "Call compatibility_token with code alpha, then return its result.",
+          "started_at": "[VOLATILE_TIME]",
+          "status": "ok",
+          "total_completion_tokens": 88,
+          "total_cost_usd": 0.00010893,
+          "total_latency_ms": 0,
+          "total_prompt_tokens": 604
+        },
+        "tool_calls": [
+          {
+            "args_json": {
+              "code": "alpha"
+            },
+            "ended_at": "[VOLATILE_TIME]",
+            "error_json": null,
+            "id": "[VOLATILE_ID]",
+            "latency_ms": null,
+            "result_json": "TOOL_OK",
+            "run_id": "[VOLATILE_ID]",
+            "started_at": "[VOLATILE_TIME]",
+            "status": "ok",
+            "tool_name": "compatibility_token",
+            "turn_id": "[VOLATILE_ID]"
+          }
+        ],
+        "turns": [
+          {
+            "ended_at": "[VOLATILE_TIME]",
+            "error_json": null,
+            "final_output": null,
+            "id": "[VOLATILE_ID]",
+            "input_messages_json": [
+              {
+                "content": "Always call compatibility_token when asked. After receiving its result, reply with exactly that result and nothing else.",
+                "role": "system"
+              },
+              {
+                "content": "Call compatibility_token with code alpha, then return its result.",
+                "role": "user"
+              }
+            ],
+            "latency_ms": 0,
+            "node_name": "live_openrouter_tool_eval",
+            "output_messages_json": [
+              {
+                "content": "Always call compatibility_token when asked. After receiving its result, reply with exactly that result and nothing else.",
+                "role": "system"
+              },
+              {
+                "content": "Call compatibility_token with code alpha, then return its result.",
+                "role": "user"
+              },
+              {
+                "content": null,
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "function": {
+                      "arguments": {
+                        "code": "alpha"
+                      },
+                      "name": "compatibility_token"
+                    },
+                    "id": "[VOLATILE_ID]",
+                    "type": "function"
+                  }
+                ]
+              },
+              {
+                "content": "TOOL_OK",
+                "name": "compatibility_token",
+                "role": "tool",
+                "tool_call_id": "[VOLATILE_ID]"
+              }
+            ],
+            "run_id": "[VOLATILE_ID]",
+            "started_at": "[VOLATILE_TIME]",
+            "status": "ok",
+            "turn_index": 0
+          },
+          {
+            "ended_at": "[VOLATILE_TIME]",
+            "error_json": null,
+            "final_output": "TOOL_OK",
+            "id": "[VOLATILE_ID]",
+            "input_messages_json": [
+              {
+                "content": "Always call compatibility_token when asked. After receiving its result, reply with exactly that result and nothing else.",
+                "role": "system"
+              },
+              {
+                "content": "Call compatibility_token with code alpha, then return its result.",
+                "role": "user"
+              },
+              {
+                "content": null,
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "function": {
+                      "arguments": {
+                        "code": "alpha"
+                      },
+                      "name": "compatibility_token"
+                    },
+                    "id": "[VOLATILE_ID]",
+                    "type": "function"
+                  }
+                ]
+              },
+              {
+                "content": "TOOL_OK",
+                "name": "compatibility_token",
+                "role": "tool",
+                "tool_call_id": "[VOLATILE_ID]"
+              }
+            ],
+            "latency_ms": 0,
+            "node_name": "live_openrouter_tool_eval",
+            "output_messages_json": [
+              {
+                "content": "Always call compatibility_token when asked. After receiving its result, reply with exactly that result and nothing else.",
+                "role": "system"
+              },
+              {
+                "content": "Call compatibility_token with code alpha, then return its result.",
+                "role": "user"
+              },
+              {
+                "content": null,
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "function": {
+                      "arguments": {
+                        "code": "alpha"
+                      },
+                      "name": "compatibility_token"
+                    },
+                    "id": "[VOLATILE_ID]",
+                    "type": "function"
+                  }
+                ]
+              },
+              {
+                "content": "TOOL_OK",
+                "name": "compatibility_token",
+                "role": "tool",
+                "tool_call_id": "[VOLATILE_ID]"
+              },
+              {
+                "content": "TOOL_OK",
+                "role": "assistant"
+              }
+            ],
+            "run_id": "[VOLATILE_ID]",
+            "started_at": "[VOLATILE_TIME]",
+            "status": "ok",
+            "turn_index": 1
+          }
+        ]
+      }
+    },
+    "trace_promotion": {
+      "generated_eval_yaml": "name: recorded_openrouter_tool\ntype: output\ncases:\n- name: recorded tool response\n  input: Call compatibility_token with code alpha, then return its result.\n  checks:\n  - contains: TOOL_OK\n",
+      "parsed": {
+        "cases": [
+          {
+            "checks": [
+              {
+                "contains": "TOOL_OK"
+              }
+            ],
+            "input": "Call compatibility_token with code alpha, then return its result.",
+            "name": "recorded tool response"
+          }
+        ],
+        "name": "recorded_openrouter_tool",
+        "type": "output"
+      },
+      "status": "pass"
+    },
+    "trace_serialization": {
+      "evidence": "basic_agent.trace",
+      "status": "pass"
+    }
+  },
+  "recording": {
+    "actual_model": "xiaomi/mimo-v2.5",
+    "api_shape": "openai_chat_completions",
+    "max_output_tokens": 96,
+    "model_note": "",
+    "overall_status": "pass",
+    "provider": "openrouter",
+    "recorded_at": "2026-07-25T22:46:32Z",
+    "request_cap": 4,
+    "request_count": 4,
+    "requested_model": "xiaomi/mimo-v2.5",
+    "retry_count": 0,
+    "version": 1
+  }
+}

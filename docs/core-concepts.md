@@ -58,9 +58,10 @@ Model strings use `provider:model` format, such as:
 - `anthropic:claude-sonnet-4-5`
 - `google:gemini-2.5-flash`
 
-OpenRouter, local, and Ollama model URIs use the OpenAI-compatible adapter.
-Anthropic and Google model URIs use native request/response shapes. Tests and
-examples can use `FakeProvider` to avoid network calls.
+OpenAI model URIs use the native Responses API. OpenRouter, local, and Ollama
+model URIs use the OpenAI-compatible Chat Completions adapter. Anthropic and
+Google model URIs use native request/response shapes. Tests and examples can
+use `FakeProvider` to avoid network calls.
 
 ## Structured Outputs
 
