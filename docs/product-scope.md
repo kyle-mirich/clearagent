@@ -20,7 +20,8 @@ product.
 ## What ClearAgent includes
 
 - Plain-Python agents, typed tools, and structured outputs.
-- OpenAI-compatible, Anthropic, and Gemini provider adapters.
+- Native OpenAI Responses, Anthropic, and Gemini provider adapters, plus
+  OpenAI-compatible OpenRouter and local adapters.
 - Redacted local SQLite traces, request replay, reports, and diffs.
 - YAML eval suites, baselines, iteration summaries, and pytest integration.
 - A deliberately bounded linear graph and local-only chat/debugging surfaces.

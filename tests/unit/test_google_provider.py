@@ -66,9 +66,11 @@ def test_google_complete_parses_text_function_calls_and_usage():
                                 {"text": "Checking the order."},
                                 {
                                     "functionCall": {
+                                        "id": "call_lookup_order",
                                         "name": "lookup_order",
                                         "args": {"order_id": "A123"},
-                                    }
+                                    },
+                                    "thoughtSignature": "signed-context",
                                 },
                             ],
                         },
@@ -103,6 +105,8 @@ def test_google_complete_parses_text_function_calls_and_usage():
     assert response.output_text == "Checking the order."
     assert response.tool_calls[0].name == "lookup_order"
     assert response.tool_calls[0].arguments == {"order_id": "A123"}
+    assert response.tool_calls[0].id == "call_lookup_order"
+    assert response.tool_calls[0].provider_data == {"thoughtSignature": "signed-context"}
     assert response.usage.total_tokens == 15
     assert response.finish_reason == "STOP"
 
@@ -189,15 +193,22 @@ def test_google_build_request_converts_assistant_and_tool_messages():
                 metadata={
                     "tool_calls": [
                         {
+                            "id": "call_lookup_order",
                             "function": {
                                 "name": "lookup_order",
                                 "arguments": {"order_id": "A123"},
-                            }
+                            },
+                            "provider_data": {"thoughtSignature": "signed-context"},
                         }
                     ]
                 },
             ),
-            Message(role="tool", content='{"status":"shipped"}', name="lookup_order"),
+            Message(
+                role="tool",
+                content='{"status":"shipped"}',
+                tool_call_id="call_lookup_order",
+                name="lookup_order",
+            ),
             Message(role="assistant", content=None),
         ],
         tools=[],
@@ -214,17 +225,20 @@ def test_google_build_request_converts_assistant_and_tool_messages():
                 {"text": "Checking."},
                 {
                     "functionCall": {
+                        "id": "call_lookup_order",
                         "name": "lookup_order",
                         "args": {"order_id": "A123"},
-                    }
+                    },
+                    "thoughtSignature": "signed-context",
                 },
             ],
         },
         {
-            "role": "function",
+            "role": "user",
             "parts": [
                 {
                     "functionResponse": {
+                        "id": "call_lookup_order",
                         "name": "lookup_order",
                         "response": {"result": '{"status":"shipped"}'},
                     }

@@ -53,6 +53,39 @@ def test_build_request_includes_tools_tool_choice_and_extra_params():
     assert request.body["seed"] == 7
 
 
+def test_build_request_serializes_assistant_tool_arguments_for_follow_up_turn():
+    provider = OpenAICompatibleProvider(provider_name="openai")
+
+    request = provider.build_request(
+        model="gpt-5.6-luna",
+        messages=[
+            Message(
+                role="assistant",
+                metadata={
+                    "tool_calls": [
+                        {
+                            "id": "call_lookup_order",
+                            "type": "function",
+                            "function": {
+                                "name": "lookup_order",
+                                "arguments": {"order_id": "A123"},
+                            },
+                        }
+                    ]
+                },
+            )
+        ],
+        tools=[lookup_order],
+        tool_choice="auto",
+        temperature=None,
+        max_tokens=None,
+        extra={},
+    )
+
+    function = request.body["messages"][0]["tool_calls"][0]["function"]
+    assert function["arguments"] == '{"order_id":"A123"}'
+
+
 def test_mock_final_text_response_parses_usage():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(

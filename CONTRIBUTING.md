@@ -42,7 +42,9 @@ uv run python -m mypy src
 ```
 
 Tests must be deterministic by default. Provider-backed live tests belong
-behind explicit environment flags and must skip when credentials are absent.
+behind the explicit `CLEARAGENT_LIVE_TESTS=1` flag. Follow the bounded commands
+and fixture-review process in
+[Live Provider Compatibility](docs/live-provider-compatibility.md).
 
 ## Documentation And Public APIs
 

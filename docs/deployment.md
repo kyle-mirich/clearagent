@@ -24,8 +24,10 @@ Optional secrets for manual or scheduled live checks:
 - `ANTHROPIC_API_KEY`
 - `GEMINI_API_KEY` or `GOOGLE_API_KEY`
 
-The live OpenRouter eval is skipped unless both `OPENROUTER_API_KEY` and
-`CLEARAGENT_RUN_LIVE=1` are present.
+The bounded live suite is never part of CI and refuses to run without
+`CLEARAGENT_LIVE_TESTS=1`. Missing provider credentials are reported without
+making requests. See [Live Provider Compatibility](live-provider-compatibility.md)
+for the exact command, targets, and request limits.
 
 ## Package Build And PyPI
 

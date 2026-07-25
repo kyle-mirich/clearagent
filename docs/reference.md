@@ -80,6 +80,11 @@ and records completed requests.
 `output`, optional `run_id` and trace path, tool-call records, merged usage and
 cost, latency, and validated `structured_output`.
 
+Parsed provider tool calls use `clearagent.providers.base.ToolCall`. Its
+`provider_data` mapping preserves opaque provider metadata needed for a later
+turn, such as Google thought signatures; applications should pass it through
+without interpreting it.
+
 `Agent.stream_text(...)` yields text chunks. When an agent has tools, ClearAgent
 runs the bounded tool loop and yields its final output as one chunk.
 
@@ -214,8 +219,9 @@ Supported model URI providers:
 - `anthropic`
 - `google`
 
-OpenRouter, local, and Ollama use the OpenAI-compatible adapter. Anthropic and
-Google use native provider adapters.
+OpenAI uses the native Responses API. OpenRouter, local, and Ollama use the
+OpenAI-compatible Chat Completions adapter. Anthropic and Google use native
+provider adapters.
 
 Local OpenAI-compatible servers can use `local:<model>` for the default
 `http://localhost:8000/v1` endpoint, or

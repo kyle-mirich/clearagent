@@ -1,0 +1,118 @@
+{
+  "completion_audit": {
+    "catalog_requests": 4,
+    "development_live_generation_requests": {
+      "anthropic": 4,
+      "google": 12,
+      "openai": 11,
+      "openrouter": 4,
+      "total": 31
+    },
+    "notes": [
+      "The final recorded run used four requests per provider.",
+      "Earlier bounded diagnostic runs exposed and verified fixes for OpenAI API selection/tool history and Google tool-result roles/thought signatures.",
+      "No invocation exceeded its per-provider request cap and no retry was automatic."
+    ],
+    "reported_cost_usd": {
+      "anthropic": null,
+      "google": null,
+      "openai": null,
+      "openrouter": 0.00012139
+    }
+  },
+  "network_policy": "live command only; default tests consume recordings",
+  "opt_in_flag": "CLEARAGENT_LIVE_TESTS=1",
+  "providers": [
+    {
+      "actual_model": "gpt-5.6-luna",
+      "availability": {
+        "requested_model": "gpt-5.6-luna",
+        "status": "pass"
+      },
+      "capabilities": {
+        "baseline_quality_gate": "pass",
+        "basic_agent": "pass",
+        "evaluation": "pass",
+        "streaming": "pass",
+        "system_and_messages": "pass",
+        "tool_round_trip": "pass",
+        "trace_promotion": "pass",
+        "trace_serialization": "pass"
+      },
+      "overall_status": "pass",
+      "provider": "openai",
+      "request_cap": 4,
+      "request_count": 4,
+      "requested_model": "gpt-5.6-luna"
+    },
+    {
+      "actual_model": "claude-sonnet-5",
+      "availability": {
+        "requested_model": "claude-sonnet-5",
+        "status": "pass"
+      },
+      "capabilities": {
+        "baseline_quality_gate": "pass",
+        "basic_agent": "pass",
+        "evaluation": "pass",
+        "streaming": "pass",
+        "system_and_messages": "pass",
+        "tool_round_trip": "pass",
+        "trace_promotion": "pass",
+        "trace_serialization": "pass"
+      },
+      "overall_status": "pass",
+      "provider": "anthropic",
+      "request_cap": 4,
+      "request_count": 4,
+      "requested_model": "claude-sonnet-5"
+    },
+    {
+      "actual_model": "gemini-3.5-flash-lite",
+      "availability": {
+        "requested_model": "gemini-3.5-flash-lite",
+        "status": "pass"
+      },
+      "capabilities": {
+        "baseline_quality_gate": "pass",
+        "basic_agent": "pass",
+        "evaluation": "pass",
+        "streaming": "pass",
+        "system_and_messages": "pass",
+        "tool_round_trip": "pass",
+        "trace_promotion": "pass",
+        "trace_serialization": "pass"
+      },
+      "overall_status": "pass",
+      "provider": "google",
+      "request_cap": 4,
+      "request_count": 4,
+      "requested_model": "gemini-3.5-flash-lite"
+    },
+    {
+      "actual_model": "xiaomi/mimo-v2.5",
+      "availability": {
+        "requested_model": "xiaomi/mimo-v2.5",
+        "status": "pass"
+      },
+      "capabilities": {
+        "baseline_quality_gate": "pass",
+        "basic_agent": "pass",
+        "evaluation": "pass",
+        "streaming": "pass",
+        "system_and_messages": "pass",
+        "tool_round_trip": "pass",
+        "trace_promotion": "pass",
+        "trace_serialization": "pass"
+      },
+      "overall_status": "pass",
+      "provider": "openrouter",
+      "request_cap": 4,
+      "request_count": 4,
+      "requested_model": "xiaomi/mimo-v2.5"
+    }
+  ],
+  "recorded_at": "2026-07-25T22:53:09Z",
+  "recording_version": 1,
+  "retry_count": 0
+}

@@ -40,7 +40,7 @@ follow the [Publishing](publishing.md) checklist.
 
 ## Provider Setup
 
-Core OpenAI-compatible, OpenRouter, local, Ollama, Anthropic, and Google
+Core native OpenAI Responses, OpenRouter, local, Ollama, Anthropic, and Google
 adapters use `httpx`, which is installed by the base package. Set only the API
 keys for the providers you use:
 

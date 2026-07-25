@@ -2,6 +2,7 @@ from clearagent.providers.anthropic import AnthropicProvider
 from clearagent.providers.base import FakeProvider, ProviderRequest, ProviderResponse
 from clearagent.providers.google import GoogleGenAIProvider
 from clearagent.providers.model_uri import ModelURI, parse_model_uri
+from clearagent.providers.openai import OpenAIResponsesProvider
 from clearagent.providers.openai_compatible import OpenAICompatibleProvider
 
 __all__ = [
@@ -9,6 +10,7 @@ __all__ = [
     "FakeProvider",
     "GoogleGenAIProvider",
     "ModelURI",
+    "OpenAIResponsesProvider",
     "OpenAICompatibleProvider",
     "ProviderRequest",
     "ProviderResponse",

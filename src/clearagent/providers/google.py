@@ -172,15 +172,18 @@ def _google_contents(messages: list[Message]) -> list[dict[str, Any]]:
         if message.role == "system":
             continue
         if message.role == "tool":
+            function_response: dict[str, Any] = {
+                "name": message.name or "",
+                "response": {"result": message.content},
+            }
+            if message.tool_call_id:
+                function_response["id"] = message.tool_call_id
             contents.append(
                 {
-                    "role": "function",
+                    "role": "user",
                     "parts": [
                         {
-                            "functionResponse": {
-                                "name": message.name or "",
-                                "response": {"result": message.content},
-                            }
+                            "functionResponse": function_response
                         }
                     ],
                 }
@@ -192,14 +195,17 @@ def _google_contents(messages: list[Message]) -> list[dict[str, Any]]:
             parts.append({"text": str(message.content)})
         for call in message.metadata.get("tool_calls") or []:
             function = call.get("function") or {}
-            parts.append(
-                {
-                    "functionCall": {
-                        "name": function.get("name", ""),
-                        "args": function.get("arguments") or {},
-                    }
-                }
-            )
+            function_call: dict[str, Any] = {
+                "name": function.get("name", ""),
+                "args": function.get("arguments") or {},
+            }
+            if call.get("id"):
+                function_call["id"] = call["id"]
+            part: dict[str, Any] = {"functionCall": function_call}
+            provider_data = call.get("provider_data") or {}
+            if provider_data.get("thoughtSignature"):
+                part["thoughtSignature"] = provider_data["thoughtSignature"]
+            parts.append(part)
         if not parts:
             parts.append({"text": ""})
         contents.append({"role": role, "parts": parts})
@@ -222,11 +228,15 @@ def _parse_google_response(request: ProviderRequest, raw: dict[str, Any]) -> Pro
         if text := part.get("text"):
             text_parts.append(text)
         if function_call := part.get("functionCall"):
+            provider_data = {}
+            if part.get("thoughtSignature"):
+                provider_data["thoughtSignature"] = part["thoughtSignature"]
             tool_calls.append(
                 ToolCall(
                     id=function_call.get("id") or function_call.get("name") or f"call_{index}",
                     name=function_call.get("name") or "",
                     arguments=function_call.get("args") or {},
+                    provider_data=provider_data,
                 )
             )
     usage_raw = raw.get("usageMetadata") or {}

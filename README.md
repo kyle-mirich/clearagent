@@ -7,7 +7,7 @@
 ClearAgent is a local-first, eval-first Python library for building and testing
 small agents.
 
-It is built for developers who want plain Python tools, OpenAI-compatible provider
+It is built for developers who want plain Python tools, native and OpenAI-compatible provider
 support, automatic local SQLite traces, exact provider request snapshots,
 turn-level replay, YAML eval suites, trace-to-eval generation, structured
 outputs, and pytest integration.
@@ -149,6 +149,10 @@ for live provider keys and optional extras. Release maintainers can follow the
 - `examples/` - runnable agents, graph flows, and eval suites
 - `docs/` - curated guides, architecture notes, and API/CLI reference
 - `scripts/check.sh` - the same 90%-coverage quality gate used by CI
+
+The paid provider compatibility suite is separate from that gate. Contributors
+can follow the bounded opt-in workflow in
+[Live Provider Compatibility](https://github.com/kyle-mirich/clearagent/blob/main/docs/live-provider-compatibility.md).
 
 ## Contributor Setup
 

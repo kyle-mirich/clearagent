@@ -8,7 +8,7 @@ from clearagent.providers.registry import provider_for_model
 @pytest.mark.parametrize(
     ("uri", "provider", "model", "api_shape"),
     [
-        ("openai:gpt-4.1-mini", "openai", "gpt-4.1-mini", "openai_chat_completions"),
+        ("openai:gpt-4.1-mini", "openai", "gpt-4.1-mini", "openai_responses"),
         (
             "anthropic:claude-sonnet-4-5",
             "anthropic",

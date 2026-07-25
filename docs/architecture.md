@@ -35,9 +35,10 @@ to the database directly; they only build and complete provider requests.
 
 ## Provider Boundary
 
-OpenAI-compatible, Anthropic, and Google adapters expose the same internal
-provider interface while preserving their native request shapes in saved traces.
-That keeps replay and request inspection exact without making the agent runtime
+Native OpenAI Responses, Anthropic Messages, native Google GenAI, and
+OpenAI-compatible Chat Completions adapters expose the same internal provider
+interface while preserving their request shapes in saved traces. That keeps
+replay and request inspection exact without making the agent runtime
 provider-specific.
 
 ## Graph Boundary

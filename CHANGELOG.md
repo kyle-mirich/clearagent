@@ -16,8 +16,11 @@ ClearAgent library.
   reports, replay, and response diffs.
 - Run YAML eval suites, generate starter evals from traces, save baselines, and
   integrate evals with pytest.
-- Use OpenAI-compatible, Anthropic, and Google provider adapters, plus a
-  deterministic fake provider for tests and offline examples.
+- Use native OpenAI Responses, Anthropic Messages, and Google GenAI provider
+  adapters, plus OpenAI-compatible OpenRouter/local adapters and a deterministic
+  fake provider for tests and offline examples.
+- Verify hosted provider behavior through a bounded opt-in live suite and
+  sanitized recordings that replay in the default offline tests.
 - Debug through the CLI or the bundled loopback-only local chat and trace
   viewer.
 

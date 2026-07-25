@@ -24,6 +24,7 @@ use from external projects.
 
 - Native Anthropic provider adapter
 - Native Google Gemini provider adapter
+- Native OpenAI Responses provider adapter
 - Structured outputs
 - Eval matrix runs
 - Eval iteration summaries
@@ -58,7 +59,9 @@ implementations.
 ## Optional Integrations
 
 - Promptfoo export
-- Live OpenRouter eval smoke test
+- Bounded four-provider live compatibility suite
 
-Live tests require both `OPENROUTER_API_KEY` and `CLEARAGENT_RUN_LIVE=1`.
+Live tests require `CLEARAGENT_LIVE_TESTS=1` plus the provider credentials and
+are never part of default CI. See
+[Live Provider Compatibility](live-provider-compatibility.md).
 Promptfoo is not installed as a core dependency.
