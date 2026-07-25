@@ -47,14 +47,6 @@ maintainers.
 - [Architecture](architecture.md) - the runtime flow and trace persistence
   invariant.
 
-Project background:
-
-- [Planning Artifacts](planning/index.md) - historical product and
-  implementation plans used while building the project.
-
-Planning artifacts can describe desired or future behavior. Use
-[Reference](reference.md) for current implemented commands and APIs.
-
 ## Contributing
 
 - [Documentation Guide](contributing-docs.md) - how agents and contributors

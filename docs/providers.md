@@ -39,6 +39,28 @@ Native Anthropic and Google adapters are unit-tested with mocked HTTP clients.
 Live tests should use OpenRouter unless Anthropic or Google credentials are
 explicitly provided for manual testing.
 
+## Model Discovery In Local Chat
+
+`GET /api/models?provider=<provider>` backs the model picker in the local chat
+app. When the matching API key is configured, ClearAgent queries the provider's
+Models API on each request and returns its current catalog:
+
+- `OPENAI_API_KEY` enables discovery from OpenAI's `/v1/models` endpoint.
+- `ANTHROPIC_API_KEY` enables discovery from Anthropic's `/v1/models` endpoint;
+  ClearAgent requests up to 1,000 entries, which is the provider's documented
+  maximum page size. Anthropic returns newer releases first.
+- `OPENROUTER_API_KEY` enables discovery from OpenRouter's `/api/v1/models`
+  endpoint.
+
+The response is authoritative for discovery, but it is not a compatibility or
+account-access guarantee; endpoint, feature, and account support still belong
+to the provider. If the key is absent, discovery fails, or the provider returns
+no models, the picker uses a bundled fallback snapshot. The 0.1.0 snapshot
+includes GPT-5.6 Sol, Terra, and Luna, plus Claude Fable 5, Opus 5, Sonnet 5,
+and Haiku 4.5. Older fallback entries remain available for compatibility.
+Applications can also pass any provider-supported model URI directly;
+ClearAgent does not limit agent construction to the picker entries.
+
 ## Related Docs
 
 - [Core Concepts](core-concepts.md)

@@ -18,6 +18,8 @@ ClearAgent library.
   integrate evals with pytest.
 - Use OpenAI-compatible, Anthropic, and Google provider adapters, plus a
   deterministic fake provider for tests and offline examples.
+- Discover current OpenAI, Anthropic, and OpenRouter model catalogs in local
+  chat, with offline fallbacks that include GPT-5.6 and Claude Opus 5.
 - Debug through the CLI or the bundled loopback-only local chat and trace
   viewer.
 
