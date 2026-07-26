@@ -6,6 +6,7 @@ from jsonschema import ValidationError, validate
 from pydantic import BaseModel
 
 from clearagent.types import RunResult
+from clearagent.storage.protocol import ModelCallRecord, ToolCallRecord, TraceStore, TraceTurn
 from clearagent.storage.sqlite import SQLiteTraceStore
 
 
@@ -50,11 +51,19 @@ def _run_check(check: dict[str, Any], result: RunResult) -> CheckResult:
         invalid = _invalid_list_check(name, expected)
         if invalid:
             return invalid
-        return _check(name, any(item in output for item in expected), f"contains any of {expected!r}", expected, output)
+        return _check(
+            name,
+            any(item in output for item in expected),
+            f"contains any of {expected!r}",
+            expected,
+            output,
+        )
     if name == "not_contains":
         if not isinstance(expected, str):
             raise TypeError("not_contains must be a string")
-        return _check(name, expected not in output, f"does not contain {expected!r}", expected, output)
+        return _check(
+            name, expected not in output, f"does not contain {expected!r}", expected, output
+        )
     if name == "regex":
         return _regex_check(str(expected), output)
     if name == "equals":
@@ -83,8 +92,12 @@ def _run_check(check: dict[str, Any], result: RunResult) -> CheckResult:
         try:
             validate(json.loads(output), expected)
         except (json.JSONDecodeError, ValidationError) as exc:
-            return CheckResult(name=name, passed=False, message=str(exc), expected=expected, actual=output)
-        return CheckResult(name=name, passed=True, message="json_schema passed", expected=expected, actual=output)
+            return CheckResult(
+                name=name, passed=False, message=str(exc), expected=expected, actual=output
+            )
+        return CheckResult(
+            name=name, passed=True, message="json_schema passed", expected=expected, actual=output
+        )
     if name == "refuses":
         refusal = any(token in output.lower() for token in ["cannot", "can't", "unable", "sorry"])
         return _check(name, refusal is bool(expected), "refusal-like output", expected, output)
@@ -101,7 +114,13 @@ def _run_check(check: dict[str, Any], result: RunResult) -> CheckResult:
         forbidden = [tool for tool in expected if tool in tools]
         return _check(name, not forbidden, f"forbidden tools {expected!r}", expected, tools)
     if name == "latency_under_ms":
-        return _check(name, result.latency_ms < int(expected), f"latency under {expected}ms", expected, result.latency_ms)
+        return _check(
+            name,
+            result.latency_ms < int(expected),
+            f"latency under {expected}ms",
+            expected,
+            result.latency_ms,
+        )
     if name == "cost_under":
         if result.cost_usd is None:
             return CheckResult(
@@ -111,7 +130,13 @@ def _run_check(check: dict[str, Any], result: RunResult) -> CheckResult:
                 expected=expected,
                 actual=None,
             )
-        return _check(name, result.cost_usd < float(expected), f"cost under {expected}", expected, result.cost_usd)
+        return _check(
+            name,
+            result.cost_usd < float(expected),
+            f"cost under {expected}",
+            expected,
+            result.cost_usd,
+        )
     if name == "structured_output":
         actual = result.structured_output
         if actual is None:
@@ -119,20 +144,38 @@ def _run_check(check: dict[str, Any], result: RunResult) -> CheckResult:
                 actual = json.loads(output)
             except json.JSONDecodeError:
                 actual = None
-        return _check(name, (actual is not None) is bool(expected), "structured output parsed", expected, actual)
+        return _check(
+            name,
+            (actual is not None) is bool(expected),
+            "structured output parsed",
+            expected,
+            actual,
+        )
     if name == "trace_provider":
         model_calls = _model_calls(result)
         providers = [call["provider"] for call in model_calls]
-        return _check(name, expected in providers, f"trace provider {expected!r}", expected, providers)
+        return _check(
+            name, expected in providers, f"trace provider {expected!r}", expected, providers
+        )
     if name == "max_turns":
         turns = _turns(result)
-        return _check(name, len(turns) <= int(expected), f"at most {expected} turns", expected, len(turns))
+        return _check(
+            name, len(turns) <= int(expected), f"at most {expected} turns", expected, len(turns)
+        )
     if name == "called_tool":
         traced_tools = [call["tool_name"] for call in _tool_calls(result)]
-        return _check(name, expected in traced_tools, f"called tool {expected!r}", expected, traced_tools)
+        return _check(
+            name, expected in traced_tools, f"called tool {expected!r}", expected, traced_tools
+        )
     if name == "not_called_tool":
         traced_tools = [call["tool_name"] for call in _tool_calls(result)]
-        return _check(name, expected not in traced_tools, f"did not call tool {expected!r}", expected, traced_tools)
+        return _check(
+            name,
+            expected not in traced_tools,
+            f"did not call tool {expected!r}",
+            expected,
+            traced_tools,
+        )
     return CheckResult(name=name, passed=False, message=f"Unknown check {name!r}.")
 
 
@@ -166,22 +209,26 @@ def _regex_check(pattern: str, output: str) -> CheckResult:
     return _check("regex", matched, f"matches regex {pattern!r}", pattern, output)
 
 
-def _trace_store(result: RunResult) -> SQLiteTraceStore | None:
-    if not result.run_id or not result.trace_db_path:
+def _trace_store(result: RunResult) -> TraceStore | None:
+    if not result.run_id:
+        return None
+    if result.trace_store is not None:
+        return result.trace_store
+    if not result.trace_db_path:
         return None
     return SQLiteTraceStore(result.trace_db_path)
 
 
-def _turns(result: RunResult) -> list[dict[str, Any]]:
+def _turns(result: RunResult) -> list[TraceTurn]:
     store = _trace_store(result)
-    return store.get_turns(result.run_id) if store and result.run_id else []
+    return store.get_turns(result.run_id) if store is not None and result.run_id else []
 
 
-def _model_calls(result: RunResult) -> list[dict[str, Any]]:
+def _model_calls(result: RunResult) -> list[ModelCallRecord]:
     store = _trace_store(result)
-    return store.list_model_calls(result.run_id) if store and result.run_id else []
+    return store.list_model_calls(result.run_id) if store is not None and result.run_id else []
 
 
-def _tool_calls(result: RunResult) -> list[dict[str, Any]]:
+def _tool_calls(result: RunResult) -> list[ToolCallRecord]:
     store = _trace_store(result)
-    return store.list_tool_calls(result.run_id) if store and result.run_id else []
+    return store.list_tool_calls(result.run_id) if store is not None and result.run_id else []

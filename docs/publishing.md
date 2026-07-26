@@ -30,7 +30,7 @@ GitHub release until the maintainer explicitly approves the release.
 6. Run the full local gate:
 
 ```bash
-uv run bash scripts/check.sh
+./scripts/check.sh
 ```
 
 ## Build Artifacts
@@ -49,7 +49,8 @@ ls dist/
 
 When package data changes, inspect the wheel. For example, the chat browser
 client should include `clearagent/chat/static/index.html`,
-`clearagent/chat/static/styles.css`, and `clearagent/chat/static/app.js`:
+`clearagent/chat/static/styles.css`, and `clearagent/chat/static/app.js`, and the
+typing marker should include `clearagent/py.typed`:
 
 ```bash
 uv run python -m zipfile -l dist/clearagent-<version>-py3-none-any.whl
@@ -74,7 +75,8 @@ CLEARAGENT_WHEEL="$(pwd)/dist/clearagent-0.1.0-py3-none-any.whl"
 CLEARAGENT_SMOKE_DIR="$(mktemp -d)"
 uv venv --python 3.14 "$CLEARAGENT_SMOKE_DIR/.venv"
 uv pip install --python "$CLEARAGENT_SMOKE_DIR/.venv/bin/python" "$CLEARAGENT_WHEEL"
-"$CLEARAGENT_SMOKE_DIR/.venv/bin/python" -c "from clearagent import create_agent, tool; print(create_agent, tool)"
+"$CLEARAGENT_SMOKE_DIR/.venv/bin/python" -c "from clearagent import create_agent, tool; from clearagent.providers import FakeProvider; print(create_agent, tool, FakeProvider)"
+"$CLEARAGENT_SMOKE_DIR/.venv/bin/clearagent" --version
 "$CLEARAGENT_SMOKE_DIR/.venv/bin/clearagent" --help
 ```
 
@@ -124,7 +126,8 @@ From a fresh project, install and smoke test the release:
 uv init --bare --python 3.14 clearagent-smoke
 cd clearagent-smoke
 uv add clearagent
-uv run python -c "from clearagent import create_agent, tool; print(create_agent); print(tool)"
+uv run python -c "from clearagent import create_agent, tool; from clearagent.providers import FakeProvider; print(create_agent, tool, FakeProvider)"
+uv run clearagent --version
 uv run clearagent --help
 ```
 

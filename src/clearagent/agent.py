@@ -22,7 +22,7 @@ from clearagent.storage.sqlite import DEFAULT_TRACE_DB, SQLiteTraceStore
 from clearagent.storage.protocol import TraceStore
 from clearagent.trace_lifecycle import TraceLifecycle, latency_ms
 from clearagent.tool import tool_name, validate_tool_arguments
-from clearagent.types import RunResult
+from clearagent.types import ExecutedToolCall, RunResult
 
 
 class MaxTurnsExceeded(RuntimeError):
@@ -62,7 +62,9 @@ class Agent:
         self.response_format = normalize_response_format(response_format)
 
     def _store(self) -> TraceStore:
-        return self.trace_store or SQLiteTraceStore(self.trace_db_path)
+        if self.trace_store is not None:
+            return self.trace_store
+        return SQLiteTraceStore(self.trace_db_path)
 
     def run(
         self,
@@ -80,15 +82,19 @@ class Agent:
         """Run the bounded model/tool loop and return the final result."""
         started = time.monotonic()
         should_trace = self.trace if trace is None else trace
-        store = trace_store or (self._store() if should_trace else None)
+        store = (
+            trace_store if trace_store is not None else (self._store() if should_trace else None)
+        )
         own_run = run_id is None
         root_input = input if isinstance(input, str) else repr(input)
-        if store and run_id is None:
-            run_id = store.start_run(agent_name=self.name, root_input=root_input, graph_name=graph_name)
+        if store is not None and run_id is None:
+            run_id = store.start_run(
+                agent_name=self.name, root_input=root_input, graph_name=graph_name
+            )
         trace_lifecycle = TraceLifecycle(store, run_id, own_run=own_run, run_started=started)
 
         messages = normalize_messages(self.system_prompt, input)
-        all_tool_calls: list[dict[str, Any]] = []
+        all_tool_calls: list[ExecutedToolCall] = []
         usage = None
         node = node_name or self.name
 
@@ -96,7 +102,7 @@ class Agent:
             persisted_turn_index = turn_index_offset + turn_index
             turn_started = time.monotonic()
             turn_id = None
-            if store and run_id:
+            if store is not None and run_id:
                 turn_id = store.start_turn(
                     run_id=run_id,
                     turn_index=persisted_turn_index,
@@ -115,7 +121,7 @@ class Agent:
                     extra=extra or {},
                     response_format=self.response_format,
                 )
-                if store and run_id and turn_id:
+                if store is not None and run_id and turn_id:
                     model_call_id = store.save_model_request(
                         run_id=run_id, turn_id=turn_id, request=request
                     )
@@ -138,7 +144,7 @@ class Agent:
             if response.tool_calls:
                 for call in response.tool_calls:
                     tool_call_id = None
-                    if store and run_id and turn_id:
+                    if store is not None and run_id and turn_id:
                         tool_call_id = store.start_tool_call(
                             run_id=run_id,
                             turn_id=turn_id,
@@ -160,7 +166,7 @@ class Agent:
                         )
                         raise
                     safe_result = json_safe(result)
-                    if store and tool_call_id:
+                    if store is not None and tool_call_id:
                         store.end_tool_call(tool_call_id, result=safe_result)
                     all_tool_calls.append(
                         {"name": call.name, "arguments": call.arguments, "result": safe_result}
@@ -192,7 +198,8 @@ class Agent:
             return RunResult(
                 output=output,
                 run_id=run_id,
-                trace_db_path=self.trace_db_path if should_trace else None,
+                trace_db_path=_trace_db_path(store),
+                trace_store=store,
                 tool_calls=all_tool_calls,
                 usage=usage,
                 cost_usd=usage.cost_usd if usage else None,
@@ -237,18 +244,22 @@ class Agent:
 
         started = time.monotonic()
         should_trace = self.trace if trace is None else trace
-        store = trace_store or (self._store() if should_trace else None)
+        store = (
+            trace_store if trace_store is not None else (self._store() if should_trace else None)
+        )
         own_run = run_id is None
         root_input = input if isinstance(input, str) else repr(input)
-        if store and run_id is None:
-            run_id = store.start_run(agent_name=self.name, root_input=root_input, graph_name=graph_name)
+        if store is not None and run_id is None:
+            run_id = store.start_run(
+                agent_name=self.name, root_input=root_input, graph_name=graph_name
+            )
         trace_lifecycle = TraceLifecycle(store, run_id, own_run=own_run, run_started=started)
 
         messages = normalize_messages(self.system_prompt, input)
         node = node_name or self.name
         turn_started = time.monotonic()
         turn_id = None
-        if store and run_id:
+        if store is not None and run_id:
             turn_id = store.start_turn(
                 run_id=run_id,
                 turn_index=0,
@@ -268,7 +279,7 @@ class Agent:
                 extra=extra or {},
                 response_format=self.response_format,
             )
-            if store and run_id and turn_id:
+            if store is not None and run_id and turn_id:
                 model_call_id = store.save_model_request(
                     run_id=run_id, turn_id=turn_id, request=request
                 )
@@ -329,6 +340,12 @@ def _assistant_message(response: ProviderResponse) -> Message:
     return Message(role="assistant", content=response.output_text, metadata=metadata)
 
 
+def _trace_db_path(store: TraceStore | None) -> Path | None:
+    if isinstance(store, SQLiteTraceStore):
+        return store.path
+    return None
+
+
 def _request_model_name(model_uri: str) -> str:
     try:
         return parse_model_uri(model_uri).model
@@ -354,7 +371,9 @@ def _apply_structured_output(
     try:
         parsed = json.loads(response.output_text)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"Invalid structured output JSON for {response_format.name!r}: {exc}") from exc
+        raise ValueError(
+            f"Invalid structured output JSON for {response_format.name!r}: {exc}"
+        ) from exc
     try:
         validate(parsed, response_format.json_schema)
     except JSONSchemaValidationError as exc:

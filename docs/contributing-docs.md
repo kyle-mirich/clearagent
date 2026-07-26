@@ -9,8 +9,10 @@ and workflows instead of mirroring docstrings.
 Use the current repository state as the source:
 
 - `README.md` for the project pitch and first link into docs
+- `AGENTS.md` for the task-to-code/test/docs map and repository invariants
 - `docs/site.md` for the docs table of contents
-- `docs/install.md` for external-project installation and first-use setup
+- `docs/install.md` for the canonical external-project installation and
+  first-use walkthrough
 - `docs/publishing.md` for package release checks
 - `src/clearagent/` for public APIs and behavior
 - `examples/` for runnable examples
@@ -72,21 +74,29 @@ When a Codex agent updates docs:
 
 1. Scan `README.md`, `docs/site.md`, relevant existing docs, related code,
    examples, tests, and `pyproject.toml`.
-2. Decide whether to update an existing page or add a focused new page.
-3. Keep `docs/site.md` in learning-path order.
-4. Prefer examples that already exist in `examples/` or tests.
-5. Document only implemented commands and behavior.
-6. Validate changed Markdown links.
-7. Run the narrowest practical verification command, usually
-   `uv run bash scripts/check.sh` for repo-wide docs changes.
+2. Use the repository map in `AGENTS.md` to identify the focused tests and all
+   reader-facing pages affected by the change.
+3. Decide whether to update an existing page or add a focused new page.
+4. Keep `docs/site.md` in learning-path order. Every `docs/*.md` page must be
+   linked from that index.
+5. Prefer examples that already exist in `examples/` or tests and import public
+   values from the package entry points documented in `reference.md`.
+6. Document only implemented commands and behavior. Label commands that create
+   databases, configuration, reports, or other output files.
+7. Run `uv run python scripts/check_docs_links.py` for Markdown changes. It
+   validates local paths, local heading anchors, and the docs index.
+8. Run `./scripts/check.sh` for repo-wide or public-behavior changes when
+   practical.
 
 ## Website Readiness Checklist
 
 - The page has one `#` title.
-- Links are relative and point to existing files.
+- Links are relative, point to existing files, and use valid heading anchors.
 - Commands use `uv`.
 - Code examples match current public APIs.
 - No page relies on generated docstring dumps.
 - New pages are linked from `docs/site.md`.
+- The canonical copy-paste quickstart remains in `docs/install.md`; other pages
+  link to it instead of maintaining a second copy.
 - README points readers toward the docs entrypoint.
 - README links that need to work on PyPI use absolute GitHub URLs.

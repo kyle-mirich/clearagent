@@ -7,11 +7,16 @@ repository.
 ## Continuous Integration
 
 The `CI` GitHub Actions workflow runs on every push and pull request using
-Python 3.14. It executes the same local gate as contributors:
+Python 3.14. The test job installs from the checked lockfile and executes the
+same offline gate as contributors:
 
 ```bash
-uv run bash scripts/check.sh
+./scripts/check.sh
 ```
+
+A separate wheel smoke job builds the wheel, installs only its base
+dependencies into a fresh environment, checks the public imports and bundled
+chat assets, and invokes CLI help.
 
 ## Required Secrets
 
@@ -46,7 +51,8 @@ commands.
 The docs are Markdown files under `docs/` and render directly on GitHub. The
 entrypoint is [site.md](site.md).
 
-Local Markdown links are checked by:
+Local Markdown file targets and heading anchors are checked by the following
+command. It also fails when a page under `docs/` is not listed from `site.md`:
 
 ```bash
 uv run python scripts/check_docs_links.py

@@ -52,21 +52,13 @@ def compare_baseline(
     baseline_metadata = _load_baseline_metadata(baseline)
     baseline_suite = _get_suite_run(store, baseline_metadata["suite_run_id"])
     if baseline["suite_name"] != suite["suite_name"]:
-        raise ValueError(
-            "Baseline suite_name does not match the comparison suite run."
-        )
+        raise ValueError("Baseline suite_name does not match the comparison suite run.")
     if baseline_suite["suite_type"] != suite["suite_type"]:
-        raise ValueError(
-            "Baseline suite_type does not match the comparison suite run."
-        )
+        raise ValueError("Baseline suite_type does not match the comparison suite run.")
     if baseline["agent_name"] != suite["agent_name"]:
-        raise ValueError(
-            "Baseline agent_name does not match the comparison suite run."
-        )
+        raise ValueError("Baseline agent_name does not match the comparison suite run.")
     if baseline["model"] != suite["model"]:
-        raise ValueError(
-            "Baseline model does not match the comparison suite run."
-        )
+        raise ValueError("Baseline model does not match the comparison suite run.")
     previous = _load_baseline_results(baseline)
     current = {
         row["case_name"]: bool(row["passed"]) for row in store.list_eval_case_results(suite_run_id)

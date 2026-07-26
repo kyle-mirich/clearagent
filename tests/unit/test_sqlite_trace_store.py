@@ -94,8 +94,12 @@ def test_trace_store_upgrades_legacy_schema_with_missing_columns(tmp_path):
 
     with store.connect() as db:
         version = db.execute("PRAGMA user_version").fetchone()[0]
-        run = db.execute("SELECT graph_name, metadata_json FROM runs WHERE id=?", (run_id,)).fetchone()
-        turn = db.execute("SELECT ended_at, latency_ms FROM turns WHERE id=?", (turn_id,)).fetchone()
+        run = db.execute(
+            "SELECT graph_name, metadata_json FROM runs WHERE id=?", (run_id,)
+        ).fetchone()
+        turn = db.execute(
+            "SELECT ended_at, latency_ms FROM turns WHERE id=?", (turn_id,)
+        ).fetchone()
 
     assert version == 1
     assert run["graph_name"] == "graph"

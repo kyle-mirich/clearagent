@@ -21,7 +21,9 @@ def test_run_eval_iterations_summarizes_variants(tmp_path):
         cases=[EvalCase(name="shipping", input="Where is A123?", checks=[{"contains": "shipped"}])],
     )
 
-    summary = run_eval_iterations(agent, suite, models=["openai:gpt-4.1-mini"], temperatures=[0.0, 0.7])
+    summary = run_eval_iterations(
+        agent, suite, models=["openai:gpt-4.1-mini"], temperatures=[0.0, 0.7]
+    )
 
     assert summary["total_variants"] == 2
     assert summary["variants"][0]["passed"] == 1

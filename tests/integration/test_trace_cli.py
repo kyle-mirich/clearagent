@@ -25,7 +25,9 @@ def test_trace_cli_lists_and_exports_request(tmp_path):
     listed = runner.invoke(app, ["trace", "list", "--trace-db", str(db_path)])
     shown = runner.invoke(app, ["trace", "show", result.run_id, "--trace-db", str(db_path)])
     turns = runner.invoke(app, ["trace", "turns", result.run_id, "--trace-db", str(db_path)])
-    request = runner.invoke(app, ["request", result.run_id, "--turn", "0", "--trace-db", str(db_path)])
+    request = runner.invoke(
+        app, ["request", result.run_id, "--turn", "0", "--trace-db", str(db_path)]
+    )
     replay = runner.invoke(
         app,
         [
@@ -118,7 +120,10 @@ cases:
     )
 
     assert generated.exit_code == 0
-    assert yaml.safe_load(eval_out.read_text(encoding="utf-8"))["cases"][0]["input"] == "Where is A123?"
+    assert (
+        yaml.safe_load(eval_out.read_text(encoding="utf-8"))["cases"][0]["input"]
+        == "Where is A123?"
+    )
     assert reported.exit_code == 0
     assert "ClearAgent Trace Report" in report_out.read_text(encoding="utf-8")
     assert iterated.exit_code == 0
@@ -136,7 +141,9 @@ def test_replay_and_diff_missing_turn_fail_with_clear_cli_message(tmp_path):
     result = agent.run("hello")
     runner = CliRunner()
 
-    replay = runner.invoke(app, ["replay", result.run_id, "--turn", "9", "--trace-db", str(db_path)])
+    replay = runner.invoke(
+        app, ["replay", result.run_id, "--turn", "9", "--trace-db", str(db_path)]
+    )
     diff = runner.invoke(app, ["diff", result.run_id, "--turn", "9", "--trace-db", str(db_path)])
 
     assert replay.exit_code != 0
@@ -164,7 +171,9 @@ def test_request_command_rejects_malformed_stored_request(tmp_path):
         )
     runner = CliRunner()
 
-    request = runner.invoke(app, ["request", result.run_id, "--turn", "0", "--trace-db", str(db_path)])
+    request = runner.invoke(
+        app, ["request", result.run_id, "--turn", "0", "--trace-db", str(db_path)]
+    )
 
     assert request.exit_code != 0
     assert "Malformed stored model request" in request.output

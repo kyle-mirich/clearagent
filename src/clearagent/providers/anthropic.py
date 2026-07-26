@@ -117,10 +117,16 @@ class AnthropicProvider:
                     try:
                         data = json.loads(payload)
                     except json.JSONDecodeError as exc:
-                        raise provider_error(request, f"stream response parse failed: {exc}") from exc
+                        raise provider_error(
+                            request, f"stream response parse failed: {exc}"
+                        ) from exc
                     if data.get("type") == "error":
                         error = data.get("error") or {}
-                        message = error.get("message", str(error)) if isinstance(error, dict) else str(error)
+                        message = (
+                            error.get("message", str(error))
+                            if isinstance(error, dict)
+                            else str(error)
+                        )
                         raise provider_error(request, f"stream error: {message}")
                     if data.get("type") == "content_block_delta":
                         delta = data.get("delta") or {}
@@ -148,7 +154,9 @@ def _build_anthropic_body(
         "messages": _anthropic_messages(messages),
         "max_tokens": max_tokens or 4096,
     }
-    system_parts = [message.content for message in messages if message.role == "system" and message.content]
+    system_parts = [
+        message.content for message in messages if message.role == "system" and message.content
+    ]
     if system_parts:
         body["system"] = "\n\n".join(str(part) for part in system_parts)
     if tools:

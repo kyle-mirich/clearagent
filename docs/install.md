@@ -15,7 +15,8 @@ features run:
 - `.clearagent/traces.sqlite`
 - `.clearagent/chat.sqlite`
 
-Do not commit local `.clearagent/*.sqlite` files.
+Do not commit local `.clearagent/*.sqlite` files or their `-wal` and `-shm`
+sidecars.
 
 ## Install As A Dependency
 
@@ -70,7 +71,7 @@ provider. Create `agent.py` in the new project:
 
 ```python
 from clearagent import create_agent, tool
-from clearagent.providers.base import FakeProvider, ProviderResponse, ToolCall
+from clearagent.providers import FakeProvider, ProviderResponse, ToolCall
 
 
 @tool
@@ -148,10 +149,13 @@ When working on ClearAgent itself, install all extras and development tools from
 the repository root:
 
 ```bash
-uv sync --all-extras --dev
-uv run clearagent init
-uv run bash scripts/check.sh
+uv sync --locked --all-extras --dev
+./scripts/check.sh
 ```
+
+Project configuration is optional. Run `uv run clearagent init` only when you
+want to create `.clearagent/config.toml`, then review that file before deciding
+whether its tracing settings should be shared in version control.
 
 Build package artifacts locally with:
 

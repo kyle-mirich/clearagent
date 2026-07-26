@@ -2,9 +2,10 @@ import time
 
 from clearagent.agent import Agent, merge_usage
 from clearagent.providers.base import Usage
+from clearagent.storage.sqlite import SQLiteTraceStore
 from clearagent.storage.protocol import TraceStore
 from clearagent.trace_lifecycle import latency_ms
-from clearagent.types import RunResult
+from clearagent.types import ExecutedToolCall, RunResult
 
 
 class AgentGraph:
@@ -46,21 +47,25 @@ class AgentGraph:
         order = self._execution_order(max_nodes=max_nodes)
         first_agent = self.nodes[entrypoint]
         should_trace = first_agent.trace if trace is None else trace
-        store = trace_store or (first_agent._store() if should_trace else None)
+        store = (
+            trace_store
+            if trace_store is not None
+            else (first_agent._store() if should_trace else None)
+        )
         run_id = (
             store.start_run(
                 agent_name=first_agent.name,
                 graph_name=self.name,
                 root_input=input,
             )
-            if store
+            if store is not None
             else None
         )
         started = time.monotonic()
         turn_offset = 0
         graph_input = input
         last_result: RunResult | None = None
-        all_tool_calls: list[dict] = []
+        all_tool_calls: list[ExecutedToolCall] = []
         usage: Usage | None = None
 
         try:
@@ -76,13 +81,13 @@ class AgentGraph:
                     end_run=False,
                     turn_index_offset=turn_offset,
                 )
-                if store and run_id:
+                if store is not None and run_id:
                     turn_offset = _next_turn_offset(store, run_id)
                 graph_input = last_result.output
                 all_tool_calls.extend(last_result.tool_calls)
                 usage = merge_usage(usage, last_result.usage)
         except Exception as exc:
-            if store and run_id:
+            if store is not None and run_id:
                 store.end_run(
                     run_id,
                     status="error",
@@ -96,7 +101,7 @@ class AgentGraph:
 
         output = last_result.output if last_result else ""
         graph_latency_ms = latency_ms(started)
-        if store and run_id:
+        if store is not None and run_id:
             store.end_run(
                 run_id,
                 final_output=output,
@@ -108,7 +113,8 @@ class AgentGraph:
         return RunResult(
             output=output,
             run_id=run_id,
-            trace_db_path=first_agent.trace_db_path if should_trace else None,
+            trace_db_path=store.path if isinstance(store, SQLiteTraceStore) else None,
+            trace_store=store,
             tool_calls=all_tool_calls,
             usage=usage,
             cost_usd=usage.cost_usd if usage else None,

@@ -16,6 +16,7 @@ from clearagent.chat.store import DEFAULT_CHAT_DB, ChatMessage, ChatSession, Cha
 from clearagent.messages import Message
 from clearagent.providers.registry import provider_for_model
 from clearagent.reports import list_trace_runs_payload, trace_triage_payload
+from clearagent.storage.protocol import TraceStore
 from clearagent.storage.sqlite import SQLiteTraceStore
 
 
@@ -111,13 +112,13 @@ def create_chat_app(
     @app.get("/api/triage/runs/{run_id}")
     def triage_run(run_id: str) -> dict:
         try:
-            return trace_triage_payload(SQLiteTraceStore(agent.trace_db_path), run_id)
+            return trace_triage_payload(_trace_store(agent), run_id)
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.get("/api/traces")
     def list_traces() -> list[dict]:
-        return list_trace_runs_payload(SQLiteTraceStore(agent.trace_db_path))
+        return list_trace_runs_payload(_trace_store(agent))
 
     @app.post("/api/sessions", response_model=ChatSession)
     def create_session() -> ChatSession:
@@ -162,7 +163,7 @@ def create_chat_app(
                 return
             if assistant_parts:
                 store.add_message(session_id, role="assistant", content="".join(assistant_parts))
-            latest_run = SQLiteTraceStore(agent.trace_db_path).get_latest_run_for_agent(agent.name)
+            latest_run = _trace_store(agent).get_latest_run_for_agent(agent.name)
             if latest_run:
                 yield _sse_event("trace", {"run_id": latest_run["id"]})
             yield "data: [DONE]\n\n"
@@ -177,6 +178,12 @@ def create_chat_app(
         )
 
     return app
+
+
+def _trace_store(agent: Agent) -> TraceStore:
+    if agent.trace_store is not None:
+        return agent.trace_store
+    return SQLiteTraceStore(agent.trace_db_path)
 
 
 def _messages_for_agent(agent: Agent, history: list[ChatMessage]) -> list[Message]:
@@ -196,9 +203,7 @@ def _sse_event(event: str, value: object) -> str:
 
 def _settings_from_agent(agent: Agent) -> ChatSettings:
     provider, model = (
-        agent.model.split(":", 1)
-        if ":" in agent.model
-        else ("openrouter", agent.model)
+        agent.model.split(":", 1) if ":" in agent.model else ("openrouter", agent.model)
     )
     supported = {"openrouter", "openai", "anthropic", "google", "local", "ollama"}
     if provider not in supported:

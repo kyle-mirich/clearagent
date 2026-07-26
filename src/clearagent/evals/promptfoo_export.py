@@ -44,9 +44,7 @@ def export_promptfoo_config(agent_path: str, suite: EvalSuite, out: str | Path) 
             elif name == "refuses":
                 if not isinstance(value, bool):
                     raise ValueError("refuses must be a boolean for Promptfoo export.")
-                refusal_js = (
-                    "['cannot', \"can't\", 'unable', 'sorry'].some((value) => output.toLowerCase().includes(value))"
-                )
+                refusal_js = "['cannot', \"can't\", 'unable', 'sorry'].some((value) => output.toLowerCase().includes(value))"
                 assertions.append(
                     {
                         "type": "javascript",

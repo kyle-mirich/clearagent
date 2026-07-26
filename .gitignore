@@ -9,7 +9,11 @@ dist/
 .DS_Store
 .playwright-mcp/
 clearagent-*.png
+# Shared .clearagent/config.toml files are intentionally committable.
 .clearagent/*.sqlite
+.clearagent/*.sqlite-shm
+.clearagent/*.sqlite-wal
+.clearagent/promptfoo_target.py
 .clearagent/traces/
 .clearagent/reports/
 .env

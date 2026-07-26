@@ -13,6 +13,7 @@ def test_cli_help_surfaces_main_commands():
     assert "chat" in result.output
     assert "eval" in result.output
     assert "trace" in result.output
+    assert "Run an importable agent once" in result.output
 
 
 def test_trace_help_surfaces_trace_subcommands():
@@ -24,6 +25,26 @@ def test_trace_help_surfaces_trace_subcommands():
     assert "list" in result.output
     assert "show" in result.output
     assert "turns" in result.output
+    assert "recorded trace runs" in result.output
+
+
+def test_command_help_describes_options():
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["run", "--help"])
+
+    assert result.exit_code == 0
+    assert "--no-trace" in result.output
+    assert "Run without recording a local trace" in result.output
+
+
+def test_cli_version_reports_installed_package_version():
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["--version"])
+
+    assert result.exit_code == 0
+    assert result.output.startswith("clearagent ")
 
 
 def test_eval_missing_suite_path_fails_without_running_agent():

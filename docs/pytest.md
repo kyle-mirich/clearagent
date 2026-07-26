@@ -12,4 +12,6 @@ def test_smoke_suite():
 ```
 
 Failures are normal `AssertionError`s and include the suite name, case name,
-failed checks, run ID, and trace DB path.
+failed checks, run ID, and the trace DB path when the configured store is
+SQLite. The helper uses the agent's injected `TraceStore` for both execution
+and trace-aware checks.

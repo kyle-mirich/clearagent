@@ -15,10 +15,13 @@ This page summarizes the main ClearAgent workflows.
 ## Eval Run
 
 1. `clearagent eval` loads an agent and YAML suite.
-2. Each case runs the agent.
-3. Checks evaluate the final output or trace data.
-4. Results are persisted in SQLite.
-5. The CLI reports pass/fail counts and exits non-zero when any case fails.
+2. `EvalRunner` uses the agent's injected `TraceStore`, or the default SQLite
+   store when none was supplied.
+3. Each case runs the agent through that same store.
+4. Checks evaluate the final output or read trace data from the store retained
+   on the `RunResult`.
+5. Eval suite and case results are persisted through the same store.
+6. The CLI reports pass/fail counts and exits non-zero when any case fails.
 
 ## Request Replay
 
@@ -34,3 +37,5 @@ This page summarizes the main ClearAgent workflows.
 3. User messages are persisted to local SQLite.
 4. The agent streams assistant text as server-sent events.
 5. Assistant messages are persisted after the stream completes.
+6. Trace-list, triage, and latest-run lookups use the agent's `TraceStore`; chat
+   sessions themselves remain in the separate SQLite `ChatStore`.

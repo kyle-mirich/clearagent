@@ -1,5 +1,124 @@
 # Agent Instructions
 
+## Fast Orientation
+
+ClearAgent is an installable Python 3.14 library. Use `uv`, preserve the
+local-first SQLite default, and keep the default test path offline and
+deterministic.
+
+Bootstrap a checkout without changing the lockfile:
+
+```bash
+uv sync --locked --all-extras --dev
+```
+
+While iterating, run the smallest checks that cover the change:
+
+```bash
+uv run pytest tests/unit/test_tool_schema.py
+uv run pytest tests/integration/test_agent_tracing.py
+uv run ruff check src/clearagent/tool.py tests/unit/test_tool_schema.py
+uv run python -m mypy src
+uv run python scripts/check_docs_links.py
+```
+
+Before handoff, run the full offline gate when practical:
+
+```bash
+./scripts/check.sh
+```
+
+The gate runs offline tests with at least 90% package line coverage, Ruff lint
+and formatting checks, mypy, and the documentation checker. Run `uv build` as
+an additional check for package metadata, bundled files, entry points, or
+release workflow changes.
+
+## Repository Map
+
+Use this map to find the implementation, its focused verification, and the
+reader-facing docs that normally move with it.
+
+| Task | Implementation | Focused tests | Public docs |
+| --- | --- | --- | --- |
+| Agent runtime, tools, messages, and results | `src/clearagent/agent.py`, `create.py`, `tool.py`, `messages.py`, `types.py` | `tests/unit/test_create_agent.py`, `test_tool_schema.py`, `test_structured_output.py`; `tests/integration/test_agent_tracing.py` | `docs/getting-started.md`, `core-concepts.md`, `reference.md` |
+| Provider adapters and model URIs | `src/clearagent/providers/` | `tests/unit/test_*provider.py`, `test_model_uri.py`, `test_native_providers.py`, `test_live_provider_compatibility.py` | `docs/providers.md`, `live-provider-compatibility.md`, `reference.md`, `status.md` |
+| Trace storage, replay, and reports | `src/clearagent/storage/`, `trace_lifecycle.py`, `replay.py`, `reports.py` | `tests/unit/test_sqlite_trace_store.py`, `test_replay.py`, `test_reports.py`; `tests/integration/test_trace_cli.py`, `test_custom_trace_store.py` | `docs/tracing.md`, `database.md`, `architecture.md`, `reference.md` |
+| Eval suites, checks, baselines, and Promptfoo | `src/clearagent/evals/` | `tests/unit/test_eval_*.py`, `test_promptfoo_export.py`; `tests/integration/test_eval_*.py`, `test_baselines.py` | `docs/evals.md`, `pytest.md`, `promptfoo.md`, `reference.md` |
+| Graph execution | `src/clearagent/graph/` | `tests/integration/test_agent_graph.py` | `docs/core-concepts.md`, `flows.md`, `architecture.md`, `reference.md` |
+| Chat backend and browser assets | `src/clearagent/chat/` | `tests/unit/test_chat_store.py`; `tests/integration/test_chat_app.py` | `docs/chat.md`, `database.md`, `flows.md`, `reference.md` |
+| CLI and project config | `src/clearagent/cli.py`, `config.py` | `tests/unit/test_config.py`; `tests/integration/test_cli_smoke.py`, `test_cli_json.py`, `test_trace_cli.py`, `test_baselines.py` | `docs/reference.md` and the relevant workflow guide |
+| Pytest integration | `src/clearagent/pytest_plugin/` | `tests/integration/test_pytest_integration.py` | `docs/pytest.md`, `core-concepts.md`, `reference.md` |
+| Packaging, examples, and docs | `pyproject.toml`, `examples/`, `scripts/`, `.github/workflows/`, `README.md`, `docs/` | `tests/unit/test_public_api.py`, `test_docs_links.py`; `tests/integration/test_examples.py`; `uv build` | `docs/install.md`, `publishing.md`, `deployment.md`, `contributing-docs.md` |
+
+## Core Invariants
+
+- A provider-shaped request is built and redacted before it is persisted, and
+  it is persisted before the provider call. Preserve this order so failures can
+  still be inspected and requests can be replayed exactly.
+- `TraceStore` is the runtime, eval, trace-check, graph, and agent-backed chat
+  persistence boundary. An injected store must not be silently replaced by a
+  newly opened SQLite store. Standalone file-oriented CLI inspection remains
+  explicitly SQLite-backed through `--trace-db`.
+- SQLite is the default, not an assumption for injected-store code. Keep trace
+  and chat persistence separate.
+- Agent tool loops are bounded by `max_turns`; graph runs are linear, reject
+  cycles and unknown targets, and are bounded by `max_nodes`.
+- The normal test gate never calls a live model. The bounded compatibility
+  runner requires `CLEARAGENT_LIVE_TESTS=1` and the relevant provider
+  credential; default tests consume sanitized recordings.
+- Public examples import authoring helpers from `clearagent`, provider values
+  from `clearagent.providers`, storage values from `clearagent.storage`, and
+  other documented package entry points. Treat deeper implementation modules
+  as internal unless `docs/reference.md` says otherwise.
+- Chat binds to loopback by default. Runtime settings mutation stays disabled
+  unless the caller explicitly enables it.
+
+## Files And Commands That Write
+
+Hand-authored source includes `src/`, `tests/`, `examples/`, curated Markdown,
+browser assets, project metadata, the lockfile, scripts, and workflows. Treat
+these outputs as generated until a person deliberately reviews and promotes
+them:
+
+- `.clearagent/*.sqlite`, plus SQLite `-wal` and `-shm` sidecars
+- `.clearagent/promptfoo_target.py`, exported Promptfoo configs, replayed
+  request JSON, generated eval YAML, and generated trace reports
+- `dist/`, `.coverage`, HTML coverage, and tool caches
+
+`.clearagent/config.toml` is a special case: `clearagent init` creates it as a
+starter project configuration. It may be committed when shared tracing settings
+are intentional, but it is not required for contributor bootstrap.
+
+Know the write boundary before running these commands:
+
+- `clearagent init` creates `.clearagent/config.toml` if it does not exist.
+- Agent runs, evals, and chat can create SQLite data at the configured paths.
+- `trace-to-eval`, `trace-report`, `replay-request`, and Promptfoo export/target
+  commands write their explicit output paths.
+- The live compatibility runner writes checked-in fixtures only when passed
+  its explicit `--record` flag.
+- `uv build` writes `dist/`; the full check may update tool caches.
+
+For tests and exploratory runs, use `tmp_path`, a temporary directory, or
+explicit temporary database/output paths. Check `git status --short` before and
+after broad commands. Remove only artifacts created by your own work; never
+discard an existing untracked file merely because it looks generated.
+
+## Live-Test Safety
+
+Do not opt into live tests merely because a credential is present. Run one only
+when the task explicitly needs network-backed verification, and target it
+directly:
+
+```bash
+CLEARAGENT_LIVE_TESTS=1 uv run python scripts/live_provider_compatibility.py --provider openrouter
+```
+
+Set `OPENROUTER_API_KEY` in the environment separately. Never print, document,
+or commit its value. Follow `docs/live-provider-compatibility.md` for request
+caps and fixture review. Live-model output is not a substitute for
+deterministic coverage.
+
 ## Documentation
 
 ClearAgent is an open source project, so behavior changes must keep the
@@ -32,8 +151,8 @@ docs should make the external-project path obvious:
   setup commands
 - keep examples copy-pastable in a fresh project, with imports from
   `clearagent`
-- label repo-only commands such as `uv sync --all-extras --dev` as contributor
-  setup
+- label repo-only commands such as `uv sync --locked --all-extras --dev` as
+  contributor setup
 - document provider API keys, optional extras, local runtime files, and the
   expected Python version near the first install instructions
 - keep `README.md` useful on PyPI by avoiding docs links that only work from a
@@ -50,7 +169,7 @@ Before claiming the project is ready to publish or consume as a package:
 
 - run `uv build` and confirm both sdist and wheel are produced
 - inspect the wheel when package data changes, especially chat static assets
-- run `uv run bash scripts/check.sh` when practical
+- run `./scripts/check.sh` when practical
 - keep `pyproject.toml` project URLs valid for PyPI
 - keep release instructions token-safe; never document or commit real publish
   tokens
@@ -63,4 +182,4 @@ Before claiming the project is ready to publish or consume as a package:
   that design.
 - Avoid documenting commands that are not implemented in this repo.
 - Prefer runnable examples backed by `examples/` or tests.
-- Run `uv run bash scripts/check.sh` for broad verification when practical.
+- Run `./scripts/check.sh` for broad verification when practical.

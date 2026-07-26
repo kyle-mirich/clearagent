@@ -26,8 +26,7 @@ FIXTURE_DIR = ROOT / "tests" / "fixtures" / "live_provider_recordings"
 
 def _recordings():
     return [
-        pytest.param(spec, FIXTURE_DIR / f"{spec.name}.json", id=spec.name)
-        for spec in PROVIDERS
+        pytest.param(spec, FIXTURE_DIR / f"{spec.name}.json", id=spec.name) for spec in PROVIDERS
     ]
 
 

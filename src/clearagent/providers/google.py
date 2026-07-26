@@ -115,12 +115,18 @@ class GoogleGenAIProvider:
                     try:
                         data = json.loads(payload)
                     except json.JSONDecodeError as exc:
-                        raise provider_error(request, f"stream response parse failed: {exc}") from exc
+                        raise provider_error(
+                            request, f"stream response parse failed: {exc}"
+                        ) from exc
                     if not isinstance(data, dict):
                         raise provider_error(request, "stream response must contain JSON objects")
                     if data.get("error"):
                         error = data["error"]
-                        message = error.get("message", str(error)) if isinstance(error, dict) else str(error)
+                        message = (
+                            error.get("message", str(error))
+                            if isinstance(error, dict)
+                            else str(error)
+                        )
                         raise provider_error(request, f"stream error: {message}")
                     for part in _candidate_parts(data):
                         if text := part.get("text"):
@@ -181,11 +187,7 @@ def _google_contents(messages: list[Message]) -> list[dict[str, Any]]:
             contents.append(
                 {
                     "role": "user",
-                    "parts": [
-                        {
-                            "functionResponse": function_response
-                        }
-                    ],
+                    "parts": [{"functionResponse": function_response}],
                 }
             )
             continue

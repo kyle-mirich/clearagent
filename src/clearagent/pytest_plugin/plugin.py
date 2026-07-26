@@ -6,7 +6,9 @@ from clearagent.evals.suite import EvalSuite
 
 
 def assert_eval_suite_passes(agent: Agent, suite_path: str | Path, *, trace_db_path=None) -> None:
-    report = EvalRunner(agent, trace_db_path=trace_db_path).run_suite(EvalSuite.from_yaml(suite_path))
+    report = EvalRunner(agent, trace_db_path=trace_db_path).run_suite(
+        EvalSuite.from_yaml(suite_path)
+    )
     if report.failed:
         lines = [f"ClearAgent suite {report.suite_name} failed:"]
         for result in report.results:

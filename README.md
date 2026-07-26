@@ -63,81 +63,13 @@ cd clearagent-quickstart
 uv add "clearagent @ git+https://github.com/kyle-mirich/clearagent.git"
 ```
 
-Create `agent.py` with a deterministic provider so the first run needs no API
-key:
+Continue with the canonical
+[First Traced Eval](https://github.com/kyle-mirich/clearagent/blob/main/docs/install.md#first-traced-eval).
+It supplies copy-pastable `agent.py` and `smoke.yaml` files, uses a deterministic
+provider with no API key, records a local trace, and runs the first eval. The
+same installation page covers live provider keys and optional extras.
 
-```python
-from clearagent import create_agent, tool
-from clearagent.providers.base import FakeProvider, ProviderResponse, ToolCall
-
-
-@tool
-def lookup_order(order_id: str) -> dict:
-    """Look up an order."""
-    return {"order_id": order_id, "status": "shipped", "eta": "Friday"}
-
-
-agent = create_agent(
-    name="support_agent",
-    model="openai:gpt-4.1-mini",
-    system_prompt="Help users with order status.",
-    tools=[lookup_order],
-    provider=FakeProvider(
-        [
-            ProviderResponse.fake_tool_call(
-                ToolCall(
-                    id="call_lookup_order",
-                    name="lookup_order",
-                    arguments={"order_id": "A123"},
-                )
-            ),
-            ProviderResponse.fake_text("Order A123 has shipped and arrives Friday."),
-        ]
-    ),
-)
-
-
-if __name__ == "__main__":
-    result = agent.run("Where is order A123?")
-    print(result.output)
-    print(f"trace: {result.trace_db_path}")
-    print(f"run_id: {result.run_id}")
-```
-
-Run the agent and locate its local SQLite trace:
-
-```bash
-uv run python agent.py
-uv run clearagent trace list
-```
-
-Create `smoke.yaml`:
-
-```yaml
-name: quickstart
-cases:
-  - name: shipped order
-    input: Where is order A123?
-    checks:
-      - contains: shipped
-      - contains: Friday
-```
-
-Run the eval. It imports a fresh `agent` object, executes the case, and records
-another local trace:
-
-```bash
-uv run clearagent eval agent:agent smoke.yaml
-```
-
-Copy a run ID from `trace list` to turn any observed trace into a starter eval:
-
-```bash
-uv run clearagent trace-to-eval <run_id> --out generated.yaml
-```
-
-See [Installation](https://github.com/kyle-mirich/clearagent/blob/main/docs/install.md)
-for live provider keys and optional extras. Release maintainers can follow the
+Release maintainers can follow the
 [publishing checklist](https://github.com/kyle-mirich/clearagent/blob/main/docs/publishing.md).
 
 ## Project Structure
@@ -160,13 +92,13 @@ These commands are for a checkout of this repository, not for applications that
 depend on ClearAgent:
 
 ```bash
-uv sync --all-extras --dev
-uv run bash scripts/check.sh
+uv sync --locked --all-extras --dev
+./scripts/check.sh
 ```
 
-The gate runs the full tests with at least 90% package line coverage, followed
-by Ruff, mypy, and documentation-link checks. CI runs the same gate on Python
-3.14.
+The gate runs deterministic non-live tests with at least 90% package line
+coverage, followed by Ruff, mypy, and documentation checks. CI runs the same
+gate on Python 3.14.
 
 ## Documentation
 

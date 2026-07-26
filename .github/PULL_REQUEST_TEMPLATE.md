@@ -8,7 +8,7 @@
 
 ## Verification
 
-- [ ] `uv run bash scripts/check.sh`
+- [ ] `./scripts/check.sh`
 - [ ] Added or updated tests for changed behavior
 
 ## Docs

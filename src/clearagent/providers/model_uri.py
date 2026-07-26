@@ -48,4 +48,6 @@ def parse_model_uri(value: str) -> ModelURI:
                 parsed_url.fragment,
             )
         )
-    return ModelURI(provider=provider, model=model, base_url=base_url, api_shape=API_SHAPES[provider])
+    return ModelURI(
+        provider=provider, model=model, base_url=base_url, api_shape=API_SHAPES[provider]
+    )

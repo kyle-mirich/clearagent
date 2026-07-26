@@ -74,7 +74,10 @@ def test_eval_runner_executes_temperature_only_matrix_against_current_model(tmp_
     report = EvalRunner(
         agent,
         provider_factory=lambda model: FakeProvider(
-            [ProviderResponse.fake_text(f"{model} shipped"), ProviderResponse.fake_text(f"{model} shipped")]
+            [
+                ProviderResponse.fake_text(f"{model} shipped"),
+                ProviderResponse.fake_text(f"{model} shipped"),
+            ]
         ),
     ).run_matrix(suite)
 

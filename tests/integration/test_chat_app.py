@@ -22,6 +22,7 @@ def test_chat_app_streams_response_and_persists_history(tmp_path):
         model="openrouter:deepseek/deepseek-v4-flash",
         system_prompt="You are concise.",
         provider=FakeProvider([ProviderResponse.fake_text("Hello **there**.")]),
+        trace_db_path=tmp_path / "traces.sqlite",
     )
     app = create_chat_app(agent, chat_db_path=tmp_path / "chat.sqlite")
     client = TestClient(app)
@@ -54,6 +55,7 @@ def test_chat_app_streams_provider_errors_as_sse_error_events(tmp_path):
         model="openrouter:deepseek/deepseek-v4-flash",
         system_prompt="You are concise.",
         provider=FakeProvider([RuntimeError("upstream rejected the request")]),
+        trace_db_path=tmp_path / "traces.sqlite",
     )
     app = create_chat_app(agent, chat_db_path=tmp_path / "chat.sqlite")
     client = TestClient(app)
@@ -66,8 +68,7 @@ def test_chat_app_streams_provider_errors_as_sse_error_events(tmp_path):
 
     assert stream_response.status_code == 200
     assert stream_response.text == (
-        'event: error\n'
-        'data: {"message": "Request failed: upstream rejected the request"}\n\n'
+        'event: error\ndata: {"message": "Request failed: upstream rejected the request"}\n\n'
     )
     history = client.get(f"/api/sessions/{session_id}/messages").json()
     assert [message["role"] for message in history] == ["user"]
@@ -306,10 +307,13 @@ def test_chat_app_does_not_expose_builder_endpoints(tmp_path):
     client = TestClient(app)
 
     assert client.get("/api/builder/flow").status_code == 404
-    assert client.post(
-        "/api/builder/plan",
-        json={"instruction": "Build a support agent."},
-    ).status_code == 404
+    assert (
+        client.post(
+            "/api/builder/plan",
+            json={"instruction": "Build a support agent."},
+        ).status_code
+        == 404
+    )
 
 
 def test_chat_app_exposes_agents_settings_and_models(tmp_path, monkeypatch):
@@ -506,6 +510,7 @@ def test_chat_app_health_favicon_and_missing_resources(tmp_path):
         name="chat_agent",
         model="openai:gpt-4.1-mini",
         provider=FakeProvider(),
+        trace_db_path=tmp_path / "traces.sqlite",
     )
     client = TestClient(create_chat_app(agent, chat_db_path=tmp_path / "chat.sqlite"))
 
@@ -513,9 +518,9 @@ def test_chat_app_health_favicon_and_missing_resources(tmp_path):
     assert client.get("/favicon.ico").status_code == 204
     assert client.get("/api/sessions/missing").status_code == 404
     assert client.get("/api/sessions/missing/messages").status_code == 404
-    assert client.post(
-        "/api/sessions/missing/messages", json={"content": "Hello"}
-    ).status_code == 404
+    assert (
+        client.post("/api/sessions/missing/messages", json={"content": "Hello"}).status_code == 404
+    )
     assert client.get("/api/triage/runs/missing").status_code == 404
 
     session_id = client.post("/api/sessions").json()["id"]
@@ -612,13 +617,9 @@ def test_chat_model_listing_falls_back_when_remote_catalog_fails(tmp_path, monke
     )
     client = TestClient(create_chat_app(agent, chat_db_path=tmp_path / "chat.sqlite"))
 
-    openrouter_ids = [
-        model["id"] for model in client.get("/api/models?provider=openrouter").json()
-    ]
+    openrouter_ids = [model["id"] for model in client.get("/api/models?provider=openrouter").json()]
     openai_ids = [model["id"] for model in client.get("/api/models?provider=openai").json()]
-    anthropic_ids = [
-        model["id"] for model in client.get("/api/models?provider=anthropic").json()
-    ]
+    anthropic_ids = [model["id"] for model in client.get("/api/models?provider=anthropic").json()]
 
     assert openrouter_ids[:7] == [
         "openai/gpt-5.6-sol",

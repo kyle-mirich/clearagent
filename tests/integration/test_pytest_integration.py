@@ -29,7 +29,9 @@ def test_pytest_helper_passes_and_fails_readably(tmp_path):
     agent = create_agent(
         name="support",
         model="openai:gpt-4.1-mini",
-        provider=FakeProvider([ProviderResponse.fake_text("hello"), ProviderResponse.fake_text("hello")]),
+        provider=FakeProvider(
+            [ProviderResponse.fake_text("hello"), ProviderResponse.fake_text("hello")]
+        ),
         trace_db_path=tmp_path / "traces.sqlite",
     )
 

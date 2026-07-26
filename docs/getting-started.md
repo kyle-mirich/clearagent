@@ -9,16 +9,10 @@ define an agent -> run it -> inspect its SQLite trace -> run or generate an eval
 
 ## Install In An External Project
 
-Use Python 3.14 or newer and `uv`:
-
-```bash
-uv init --bare --python 3.14 clearagent-quickstart
-cd clearagent-quickstart
-uv add "clearagent @ git+https://github.com/kyle-mirich/clearagent.git"
-```
-
-The documented pre-release install uses the public GitHub repository. Replace
-it with `uv add clearagent` only after the intended release is visible on PyPI.
+Use Python 3.14 or newer and follow the canonical
+[installation and first traced eval](install.md#install-as-a-dependency). The
+pre-release path installs from the public GitHub repository; the same page says
+when to use a PyPI dependency and how to install provider extras.
 
 ## Complete The Offline Feedback Loop
 
@@ -85,7 +79,9 @@ Create `.clearagent/config.toml` when you want CLI tracing settings shared by
 uv run clearagent init
 ```
 
-Direct Python API calls continue to use values passed to `create_agent`.
+The command creates the file only when it is absent. Review it before deciding
+whether the project should commit those shared settings. Direct Python API
+calls continue to use values passed to `create_agent`.
 
 ## Contributor Setup
 
@@ -93,14 +89,14 @@ The following commands are only for a checkout of the ClearAgent repository,
 not for an application that depends on the package:
 
 ```bash
-uv sync --all-extras --dev
-uv run bash scripts/check.sh
+uv sync --locked --all-extras --dev
+./scripts/check.sh
 uv run python examples/customer_support/agent.py
 uv run clearagent eval examples.customer_support.agent:agent examples/customer_support/evals/smoke.yaml
 ```
 
-The quality gate runs the complete tests with at least 90% package line
-coverage, then Ruff, mypy, and the documentation-link checker.
+The quality gate runs deterministic non-live tests with at least 90% package
+line coverage, then Ruff, mypy, and the documentation checker.
 
 ## Next Steps
 

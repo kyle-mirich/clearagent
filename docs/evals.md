@@ -27,7 +27,12 @@ uv run clearagent eval examples.customer_support.agent:agent examples/customer_s
 ```
 
 Each eval case runs the agent, writes a normal trace run, evaluates checks
-against the final output or trace data, and records the eval result in SQLite.
+against the final output or trace data, and records the eval result through the
+agent's `TraceStore`. SQLite is the default; an injected store is used for the
+entire eval flow.
+
+Add `--json` to emit the complete `EvalReport` for automation. The command
+still exits 1 when any case fails, after writing the JSON report.
 
 ## Trace-to-Eval Generation
 
@@ -118,16 +123,22 @@ Trace-aware checks include:
 - `not_called_tool`
 - `structured_output`
 
+They read from the exact store retained on the case's `RunResult`, so they work
+with custom `TraceStore` implementations without reopening SQLite.
+
 ## Baselines
 
 Suite runs can be saved as baselines and compared later:
 
 ```bash
 uv run clearagent baseline save <suite_run_id> --name v1
-uv run clearagent baseline compare v1 <suite_run_id>
+uv run clearagent baseline compare v1 <suite_run_id> --json
 ```
 
 Baseline comparison reports regressions and improvements by eval case name.
+The JSON form also includes unchanged passes and failures. A successful
+comparison exits zero even when its `regressions` list is non-empty, so CI
+policy should inspect that field.
 Missing suite runs, comparison runs, baseline names, or malformed stored
 baseline records fail with a clear parameter error.
 Baseline comparison also requires the saved baseline and current suite run to

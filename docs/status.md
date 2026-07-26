@@ -6,11 +6,14 @@ This page separates the stable core from local or experimental surfaces.
 
 - `create_agent`
 - `@tool`
-- `FakeProvider` for tests and examples
-- SQLite trace storage
+- canonical provider imports, including `FakeProvider`, from
+  `clearagent.providers`
+- typed package metadata through `py.typed`
+- SQLite trace storage and end-to-end custom `TraceStore` injection
 - `clearagent run`
 - `clearagent eval`
 - `clearagent trace list/show/turns`
+- CLI help, `--version`, and documented JSON inspection output
 - `clearagent request`
 - `clearagent replay-request`
 - `clearagent trace-to-eval`

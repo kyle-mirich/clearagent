@@ -72,6 +72,12 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+# The default gate is offline. Network checks use the separately gated
+# scripts/live_provider_compatibility.py runner.
+addopts = ["-m", "not live"]
+markers = [
+  "live: requires explicit opt-in and external provider credentials",
+]
 
 [tool.ruff]
 line-length = 100

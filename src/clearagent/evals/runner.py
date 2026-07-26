@@ -3,6 +3,7 @@ from clearagent.evals.checks import run_checks
 from clearagent.evals.report import EvalCaseResult, EvalReport
 from clearagent.evals.suite import EvalCase, EvalSuite
 from clearagent.providers.registry import provider_for_model
+from clearagent.storage.protocol import TraceStore
 from clearagent.storage.sqlite import SQLiteTraceStore
 
 
@@ -19,7 +20,7 @@ class EvalRunner:
         """Run every case, or dispatch to matrix execution when configured."""
         if suite.matrix:
             return self.run_matrix(suite)
-        store = SQLiteTraceStore(self.agent.trace_db_path)
+        store = self._store()
         suite_run_id = store.start_eval_suite_run(
             suite_name=suite.name,
             suite_type=suite.type,
@@ -58,7 +59,7 @@ class EvalRunner:
         variants = _matrix_variants(suite.matrix or {})
         if not variants:
             variants = [{"model": self.agent.model, "temperature": self.agent.temperature}]
-        store = SQLiteTraceStore(self.agent.trace_db_path)
+        store = self._store()
         suite_run_id = store.start_eval_suite_run(
             suite_name=suite.name,
             suite_type=suite.type,
@@ -112,7 +113,7 @@ class EvalRunner:
 
     def _run_case(
         self,
-        store: SQLiteTraceStore,
+        store: TraceStore,
         suite_run_id: str,
         suite: EvalSuite,
         case: EvalCase,
@@ -159,7 +160,7 @@ class EvalRunner:
                 passed=False,
                 checks=check_dicts,
                 run_id=run_id,
-                trace_db_path=str(self.agent.trace_db_path),
+                trace_db_path=str(store.path) if isinstance(store, SQLiteTraceStore) else None,
                 latency_ms=0,
                 cost_usd=None,
                 variant=variant or {},
@@ -196,7 +197,7 @@ class EvalRunner:
 
     def _latest_or_synthetic_error_run(
         self,
-        store: SQLiteTraceStore,
+        store: TraceStore,
         case_input: str,
         exc: Exception,
         *,
@@ -212,6 +213,11 @@ class EvalRunner:
             error={"type": exc.__class__.__name__, "message": str(exc)},
         )
         return run_id
+
+    def _store(self) -> TraceStore:
+        if self.agent.trace_store is not None:
+            return self.agent.trace_store
+        return SQLiteTraceStore(self.agent.trace_db_path)
 
 
 def _matrix_variants(matrix: dict) -> list[dict]:

@@ -18,8 +18,10 @@ ClearAgent is developed with `uv` and targets Python 3.14.
 
 ## Setup
 
+Install the locked development environment from the repository root:
+
 ```bash
-uv sync --all-extras --dev
+uv sync --locked --all-extras --dev
 ```
 
 ## Verification
@@ -27,24 +29,29 @@ uv sync --all-extras --dev
 Run the full local gate before opening a change:
 
 ```bash
-uv run bash scripts/check.sh
+./scripts/check.sh
 ```
 
-The gate runs the complete test suite, requires at least 90% package line
-coverage, then runs Ruff, mypy, and documentation-link checks.
+The gate runs deterministic non-live tests, requires at least 90% package line
+coverage, then runs Ruff lint and formatting checks, mypy, and documentation
+checks for local files, anchors, and indexed pages.
 
 Focused tests are useful while iterating:
 
 ```bash
 uv run pytest tests/unit/test_tool_schema.py
+uv run pytest tests/integration/test_agent_tracing.py
 uv run ruff check .
 uv run python -m mypy src
+uv run python scripts/check_docs_links.py
 ```
 
 Tests must be deterministic by default. Provider-backed live tests belong
 behind the explicit `CLEARAGENT_LIVE_TESTS=1` flag. Follow the bounded commands
 and fixture-review process in
 [Live Provider Compatibility](docs/live-provider-compatibility.md).
+Do not enable live tests only because a key happens to be present, and never
+print a credential in test output.
 
 ## Documentation And Public APIs
 
@@ -61,14 +68,28 @@ Keep pull requests reviewable and include:
 - the problem and intended behavior
 - tests for successful and failure paths
 - documentation updates, or a short explanation of why none are needed
-- the output of `uv run bash scripts/check.sh`
+- the output of `./scripts/check.sh`
 
 Do not commit API keys, `.env` files, local databases, generated reports, or
 package artifacts. By contributing, you agree that your contribution is
 licensed under the repository's [MIT License](LICENSE).
 
-## Local Runtime Files
+## Commands That Write Files
 
-Local traces, chat sessions, generated Promptfoo targets, and `.env` files
-should stay out of git. The project `.gitignore` excludes `.clearagent/*.sqlite`
-and `.env`.
+Several useful commands create local state:
+
+- `clearagent init` creates `.clearagent/config.toml` if it is absent. This is
+  optional for contributors. Review and commit it only when the project should
+  share those settings.
+- Agent runs and evals create `.clearagent/traces.sqlite` by default; chat also
+  creates `.clearagent/chat.sqlite`. SQLite may create `-wal` and `-shm`
+  sidecars.
+- `trace-to-eval`, `trace-report`, `replay-request`, and Promptfoo commands
+  write the paths passed to their output arguments.
+- `uv build` writes `dist/`; tests and checks may update tool caches.
+
+Use `tmp_path` in tests and explicit temporary paths for exploratory runs. Keep
+SQLite files and sidecars, generated reports and evals, Promptfoo targets,
+package artifacts, and `.env` files out of git. A generated eval or report
+becomes hand-authored project material only after it is reviewed and moved to
+an intentional tracked location.

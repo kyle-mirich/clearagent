@@ -4,6 +4,13 @@ ClearAgent supports the native OpenAI Responses API, OpenAI-compatible request
 shapes, native Anthropic Messages, native Google Gemini `generateContent`, and
 deterministic fake providers for tests and examples.
 
+Import provider contracts, response types, and supported adapters from the
+public package entry point:
+
+```python
+from clearagent.providers import FakeProvider, ProviderResponse, ToolCall
+```
+
 Model URIs use `provider:model`:
 
 - `openai:gpt-4.1-mini`

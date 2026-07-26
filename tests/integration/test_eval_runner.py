@@ -46,7 +46,11 @@ def test_eval_runner_failure_includes_run_id(tmp_path):
     suite = EvalSuite(
         name="smoke",
         type="output",
-        cases=[EvalCase(name="shipped order", input="Where is order A123?", checks=[{"contains": "shipped"}])],
+        cases=[
+            EvalCase(
+                name="shipped order", input="Where is order A123?", checks=[{"contains": "shipped"}]
+            )
+        ],
     )
 
     report = EvalRunner(agent).run_suite(suite)

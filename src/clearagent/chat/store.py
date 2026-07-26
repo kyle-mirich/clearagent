@@ -144,8 +144,7 @@ class ChatStore:
     def add_message(self, session_id: str, *, role: ChatRole, content: str) -> ChatMessage:
         if role not in CHAT_ROLES:
             raise ValueError(
-                "Unsupported chat message role "
-                f"{role!r}. Expected one of: assistant, system, user."
+                f"Unsupported chat message role {role!r}. Expected one of: assistant, system, user."
             )
         if self.get_session(session_id) is None:
             raise ValueError(f"Unknown chat session {session_id!r}.")
@@ -210,8 +209,7 @@ def _ensure_columns(
 ) -> None:
     for table_name, columns in table_columns.items():
         existing = {
-            row["name"]
-            for row in db.execute(f"PRAGMA table_info({table_name})").fetchall()
+            row["name"] for row in db.execute(f"PRAGMA table_info({table_name})").fetchall()
         }
         for column_name, definition in columns.items():
             if column_name not in existing:

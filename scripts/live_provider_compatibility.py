@@ -89,9 +89,7 @@ def live_tests_enabled(environ: dict[str, str] | os._Environ[str] = os.environ) 
 
 def require_live_opt_in(environ: dict[str, str] | os._Environ[str] = os.environ) -> None:
     if not live_tests_enabled(environ):
-        raise RuntimeError(
-            f"Refusing to make provider requests: set {OPT_IN_ENV}=1 explicitly."
-        )
+        raise RuntimeError(f"Refusing to make provider requests: set {OPT_IN_ENV}=1 explicitly.")
 
 
 class BoundedProvider:
@@ -260,9 +258,7 @@ def run_provider(spec: ProviderSpec, working_dir: Path) -> dict[str, Any]:
         }
 
     recording["recording"]["request_count"] = bounded.request_count
-    capability_statuses = [
-        item["status"] for item in recording["capabilities"].values()
-    ]
+    capability_statuses = [item["status"] for item in recording["capabilities"].values()]
     capabilities_pass = all(status == "pass" for status in capability_statuses)
     target_unavailable = recording["availability"].get("status") == "failed"
     if capabilities_pass and target_unavailable:
@@ -413,12 +409,8 @@ def _trace_snapshot(db_path: Path, run_id: str | None) -> dict[str, Any]:
     snapshot = {
         "run": _parse_json_columns(run),
         "turns": [_parse_json_columns(row) for row in store.get_turns(run_id)],
-        "model_calls": [
-            _parse_json_columns(row) for row in store.list_model_calls(run_id)
-        ],
-        "tool_calls": [
-            _parse_json_columns(row) for row in store.list_tool_calls(run_id)
-        ],
+        "model_calls": [_parse_json_columns(row) for row in store.list_model_calls(run_id)],
+        "tool_calls": [_parse_json_columns(row) for row in store.list_tool_calls(run_id)],
     }
     return sanitize(snapshot)
 
@@ -504,11 +496,7 @@ def _timestamp() -> str:
 
 def _assert_no_configured_secrets(payload: Any) -> None:
     serialized = json.dumps(payload, sort_keys=True)
-    for name in {
-        credential
-        for spec in PROVIDERS
-        for credential in spec.credential_names
-    }:
+    for name in {credential for spec in PROVIDERS for credential in spec.credential_names}:
         secret = os.environ.get(name)
         if secret and secret in serialized:
             raise RuntimeError(f"refusing to record payload containing {name}")
@@ -531,8 +519,7 @@ def _summary(recordings: list[dict[str, Any]]) -> dict[str, Any]:
                 "request_count": item["recording"]["request_count"],
                 "request_cap": item["recording"]["request_cap"],
                 "capabilities": {
-                    name: result["status"]
-                    for name, result in item["capabilities"].items()
+                    name: result["status"] for name, result in item["capabilities"].items()
                 },
             }
             for item in recordings
@@ -568,13 +555,9 @@ def write_recordings(recordings: list[dict[str, Any]], summary: dict[str, Any]) 
             {provider["provider"]: provider for provider in summary["providers"]}
         )
         summary["providers"] = [
-            providers_by_name[spec.name]
-            for spec in PROVIDERS
-            if spec.name in providers_by_name
+            providers_by_name[spec.name] for spec in PROVIDERS if spec.name in providers_by_name
         ]
-    summary_path.write_text(
-        json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
+    summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:

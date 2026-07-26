@@ -62,7 +62,8 @@ HTTP endpoints and read a streaming response body.
 ## Trace Viewer
 
 The packaged browser client has a **Traces** mode next to Chat. It is a local
-debugging surface for recent `.clearagent/traces.sqlite` runs:
+debugging surface for recent runs from the agent's `TraceStore`; that is
+`.clearagent/traces.sqlite` by default:
 
 - scan recent runs by status, agent, graph, input preview, and output preview
 - open an agent or graph run as an ordered turn timeline
@@ -71,8 +72,11 @@ debugging surface for recent `.clearagent/traces.sqlite` runs:
 - expand model request, response, usage, and tool JSON
 - copy run IDs, JSON panes, and the Markdown trace report
 
-The viewer is read-only. Missing run IDs return `404`, and malformed trace JSON
-is surfaced as a detected failure in the triage payload where possible.
+The viewer is read-only. Its trace list, triage report, and latest-run lookup all
+use the same injected store as the agent. Chat sessions and messages remain in
+the separate SQLite `ChatStore`. Missing run IDs return `404`, and malformed
+trace JSON is surfaced as a detected failure in the triage payload where
+possible.
 
 ## Safety Boundary
 

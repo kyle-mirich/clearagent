@@ -152,7 +152,7 @@ def test_mock_tool_call_response_parses_tool_calls():
                                     "type": "function",
                                     "function": {
                                         "name": "lookup_order",
-                                        "arguments": "{\"order_id\": \"A123\"}",
+                                        "arguments": '{"order_id": "A123"}',
                                     },
                                 }
                             ],
