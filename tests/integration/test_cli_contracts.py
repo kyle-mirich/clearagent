@@ -346,12 +346,12 @@ def test_promptfoo_commands_create_outputs_and_reject_bad_agent_paths(tmp_path):
     )
 
     assert exported.exit_code == 0
-    assert config_out.name in exported.output
+    assert exported.output == f"{config_out}\n"
     assert yaml.safe_load(config_out.read_text(encoding="utf-8"))["tests"][0][
         "description"
     ] == "expected output"
     assert targeted.exit_code == 0
-    assert target_out.name in targeted.output
+    assert targeted.output == f"{target_out}\n"
     assert "from package.agent import agent" in target_out.read_text(encoding="utf-8")
     assert rejected.exit_code != 0
     assert "agent path must use module:object format" in rejected.output

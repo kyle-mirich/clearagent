@@ -169,7 +169,7 @@ def trace_to_eval(
         )
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
-    console.print(str(out))
+    typer.echo(str(out))
 
 
 @app.command("trace-report")
@@ -186,7 +186,7 @@ def trace_report(
         raise typer.BadParameter(str(exc)) from exc
     if out:
         out.write_text(report, encoding="utf-8")
-        console.print(str(out))
+        typer.echo(str(out))
     else:
         console.print(report)
 
@@ -319,7 +319,7 @@ def promptfoo_export(agent_path: str, suite_path: str, out: Path) -> None:
         export_promptfoo_config(agent_path, EvalSuite.from_yaml(suite_path), out)
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
-    console.print(str(out))
+    typer.echo(str(out))
 
 
 @promptfoo_app.command("target")
@@ -330,7 +330,7 @@ def promptfoo_target(agent_path: str, out: Path) -> None:
         write_promptfoo_target(agent_path, out)
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
-    console.print(str(out))
+    typer.echo(str(out))
 
 
 @baseline_app.command("save")
