@@ -1,3 +1,4 @@
+from click import unstyle
 from typer.testing import CliRunner
 
 from clearagent.cli import app
@@ -32,10 +33,11 @@ def test_command_help_describes_options():
     runner = CliRunner()
 
     result = runner.invoke(app, ["run", "--help"])
+    output = unstyle(result.output)
 
     assert result.exit_code == 0
-    assert "--no-trace" in result.output
-    assert "Run without recording a local trace" in result.output
+    assert "--no-trace" in output
+    assert "Run without recording a local trace" in output
 
 
 def test_cli_version_reports_installed_package_version():
