@@ -43,7 +43,7 @@ def test_promptfoo_export_requires_module_object_agent_path(tmp_path):
     suite = EvalSuite(
         name="safety",
         type="output",
-        cases=[EvalCase(name="safe answer", input="hello", checks=[])],
+        cases=[EvalCase(name="safe answer", input="hello", checks=[{"contains": "hello"}])],
     )
 
     with pytest.raises(ValueError, match="module:object"):

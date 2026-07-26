@@ -175,7 +175,7 @@ def test_matrix_setup_failure_finalizes_suite_run(tmp_path):
     suite = EvalSuite(
         name="matrix",
         matrix={"models": ["broken:model"]},
-        cases=[EvalCase(name="case", input="hello")],
+        cases=[EvalCase(name="case", input="hello", checks=[{"contains": "hello"}])],
     )
 
     def broken_factory(model):
@@ -189,3 +189,43 @@ def test_matrix_setup_failure_finalizes_suite_run(tmp_path):
     assert row["status"] == "error"
     assert row["ended_at"] is not None
     assert "cannot create" in row["metadata_json"]
+
+
+def test_eval_runner_rejects_empty_suite_before_provider_call(tmp_path):
+    provider = FakeProvider([ProviderResponse.fake_text("should not run")])
+    agent = create_agent(
+        name="support",
+        model="openai:gpt-4.1-mini",
+        provider=provider,
+        trace_db_path=tmp_path / "traces.sqlite",
+    )
+    suite = EvalSuite(
+        name="smoke",
+        cases=[EvalCase(name="case", input="hello", checks=[{"contains": "hello"}])],
+    )
+    suite.cases.clear()
+
+    with pytest.raises(ValueError, match="at least one case"):
+        EvalRunner(agent).run_suite(suite)
+
+    assert provider.completed_requests == []
+
+
+def test_eval_runner_rejects_case_without_checks_before_provider_call(tmp_path):
+    provider = FakeProvider([ProviderResponse.fake_text("should not run")])
+    agent = create_agent(
+        name="support",
+        model="openai:gpt-4.1-mini",
+        provider=provider,
+        trace_db_path=tmp_path / "traces.sqlite",
+    )
+    suite = EvalSuite(
+        name="smoke",
+        cases=[EvalCase(name="case", input="hello", checks=[{"contains": "hello"}])],
+    )
+    suite.cases[0].checks.clear()
+
+    with pytest.raises(ValueError, match="at least one check"):
+        EvalRunner(agent).run_suite(suite)
+
+    assert provider.completed_requests == []

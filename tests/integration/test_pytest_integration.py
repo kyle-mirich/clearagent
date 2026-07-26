@@ -45,7 +45,7 @@ def test_pytest_helper_passes_and_fails_readably(tmp_path):
     assert "traces.sqlite" in message
 
 
-def test_pytest_helper_failure_message_includes_matrix_variant(tmp_path):
+def test_pytest_helper_failure_message_includes_matrix_variant(tmp_path, monkeypatch):
     suite_path = tmp_path / "matrix.yaml"
     suite_path.write_text(
         """
@@ -67,8 +67,12 @@ cases:
     agent = create_agent(
         name="support",
         model="openai:gpt-4.1-mini",
-        provider=FakeProvider(),
+        provider=FakeProvider([ProviderResponse.fake_text("wrong answer")]),
         trace_db_path=tmp_path / "traces.sqlite",
+    )
+    monkeypatch.setattr(
+        "clearagent.evals.runner.provider_for_model",
+        lambda model: FakeProvider([ProviderResponse.fake_text(f"wrong answer from {model}")]),
     )
 
     with pytest.raises(AssertionError) as error:

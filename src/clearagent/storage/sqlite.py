@@ -12,7 +12,7 @@ from clearagent.serialization import json_safe
 from clearagent.storage.redaction import redact
 
 DEFAULT_TRACE_DB = Path(".clearagent/traces.sqlite")
-TRACE_SCHEMA_VERSION = 1
+TRACE_SCHEMA_VERSION = 2
 
 TRACE_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS runs (
@@ -103,6 +103,7 @@ CREATE TABLE IF NOT EXISTS eval_case_results (
   final_output TEXT,
   passed INTEGER NOT NULL,
   checks_json TEXT NOT NULL,
+  variant_json TEXT NOT NULL DEFAULT '{}',
   failure_json TEXT,
   latency_ms INTEGER,
   cost_usd REAL,
@@ -215,6 +216,7 @@ TRACE_COLUMNS = {
         "final_output": "TEXT",
         "passed": "INTEGER NOT NULL DEFAULT 0",
         "checks_json": "TEXT NOT NULL DEFAULT '[]'",
+        "variant_json": "TEXT NOT NULL DEFAULT '{}'",
         "failure_json": "TEXT",
         "latency_ms": "INTEGER",
         "cost_usd": "REAL",
@@ -566,16 +568,18 @@ class SQLiteTraceStore:
         checks: list[dict[str, Any]],
         latency_ms: int | None,
         cost_usd: float | None,
+        variant: dict[str, Any] | None = None,
     ) -> str:
         result_id = _id("case_result")
         failures = [check for check in checks if not check.get("passed")]
+        variant_json = json.dumps(variant or {}, sort_keys=True, separators=(",", ":"))
         with self.connect() as db:
             db.execute(
                 """
                 INSERT INTO eval_case_results
                 (id, suite_run_id, run_id, suite_name, case_name, input, final_output,
-                 passed, checks_json, failure_json, latency_ms, cost_usd)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 passed, checks_json, variant_json, failure_json, latency_ms, cost_usd)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     result_id,
@@ -587,6 +591,7 @@ class SQLiteTraceStore:
                     final_output,
                     1 if passed else 0,
                     json.dumps(checks),
+                    variant_json,
                     json.dumps(failures) if failures else None,
                     latency_ms,
                     cost_usd,

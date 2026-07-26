@@ -2,7 +2,7 @@ from typing import Any
 
 from clearagent.agent import Agent
 from clearagent.evals.checks import run_checks
-from clearagent.evals.suite import EvalSuite
+from clearagent.evals.suite import EvalSuite, require_runnable_suite
 from clearagent.providers.registry import provider_for_model
 
 
@@ -14,6 +14,7 @@ def run_eval_iterations(
     temperatures: list[float | None] | None = None,
     provider_factory=provider_for_model,
 ) -> dict[str, Any]:
+    require_runnable_suite(suite)
     variants = _variants(
         models or [agent.model],
         temperatures if temperatures is not None else [agent.temperature],

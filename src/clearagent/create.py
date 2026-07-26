@@ -19,7 +19,7 @@ def create_agent(
     trace_db_path: str | Path = DEFAULT_TRACE_DB,
     trace_store: TraceStore | None = None,
     max_turns: int = 8,
-    temperature: float | None = 0.0,
+    temperature: float | None = None,
     provider: Provider | None = None,
     response_format: ResponseFormatInput = None,
 ) -> Agent:

@@ -1,3 +1,6 @@
+import json
+
+import pytest
 from typer.testing import CliRunner
 
 from clearagent.cli import app
@@ -71,6 +74,116 @@ def test_baseline_save_and_compare_detects_regression_and_improvement(tmp_path):
     assert isinstance(comparison, BaselineComparison)
     assert comparison.regressions == ["case a"]
     assert comparison.improvements == ["case b"]
+
+
+def test_matrix_baseline_distinguishes_variants_of_the_same_case(tmp_path):
+    store = SQLiteTraceStore(tmp_path / "traces.sqlite")
+    run_id = store.start_run(agent_name="support", root_input="a")
+    baseline_run = store.start_eval_suite_run(
+        suite_name="matrix", suite_type="output", agent_name="support", model="matrix"
+    )
+    for temperature in (0.0, 0.2):
+        store.save_eval_case_result(
+            suite_run_id=baseline_run,
+            run_id=run_id,
+            suite_name="matrix",
+            case_name="case a",
+            input="a",
+            final_output="ok",
+            passed=True,
+            checks=[],
+            latency_ms=1,
+            cost_usd=0,
+            variant={"temperature": temperature, "model": "openai:gpt"},
+        )
+    store.end_eval_suite_run(baseline_run, passed=2, failed=0)
+    save_baseline(store, baseline_run, name="matrix-v1")
+
+    current_run = store.start_eval_suite_run(
+        suite_name="matrix", suite_type="output", agent_name="support", model="matrix"
+    )
+    for temperature, passed in ((0.0, False), (0.2, True)):
+        store.save_eval_case_result(
+            suite_run_id=current_run,
+            run_id=run_id,
+            suite_name="matrix",
+            case_name="case a",
+            input="a",
+            final_output="ok" if passed else "bad",
+            passed=passed,
+            checks=[],
+            latency_ms=1,
+            cost_usd=0,
+            variant={"temperature": temperature, "model": "openai:gpt"},
+        )
+
+    comparison = compare_baseline(store, "matrix-v1", current_run)
+
+    assert comparison.regressions == [
+        'case a [variant={"model":"openai:gpt","temperature":0.0}]'
+    ]
+    assert comparison.unchanged_passes == [
+        'case a [variant={"model":"openai:gpt","temperature":0.2}]'
+    ]
+    with store.connect() as db:
+        saved = db.execute(
+            "SELECT results_json FROM baselines WHERE name='matrix-v1'"
+        ).fetchone()
+    assert len(json.loads(saved["results_json"])) == 2
+
+
+@pytest.mark.parametrize("variant_json", ["{not json", "[]"])
+def test_baseline_save_rejects_malformed_persisted_variant(tmp_path, variant_json):
+    store = SQLiteTraceStore(tmp_path / "traces.sqlite")
+    suite_run_id = store.start_eval_suite_run(
+        suite_name="matrix", suite_type="output", agent_name="support", model="matrix"
+    )
+    run_id = store.start_run(agent_name="support", root_input="a")
+    store.save_eval_case_result(
+        suite_run_id=suite_run_id,
+        run_id=run_id,
+        suite_name="matrix",
+        case_name="case a",
+        input="a",
+        final_output="ok",
+        passed=True,
+        checks=[],
+        latency_ms=1,
+        cost_usd=0,
+    )
+    with store.connect() as db:
+        db.execute(
+            "UPDATE eval_case_results SET variant_json=? WHERE suite_run_id=?",
+            (variant_json, suite_run_id),
+        )
+
+    with pytest.raises(ValueError, match="Malformed eval variant.*case a"):
+        save_baseline(store, suite_run_id, name="matrix-v1")
+
+
+def test_baseline_save_rejects_duplicate_case_variant_identity(tmp_path):
+    store = SQLiteTraceStore(tmp_path / "traces.sqlite")
+    suite_run_id = store.start_eval_suite_run(
+        suite_name="matrix", suite_type="output", agent_name="support", model="matrix"
+    )
+    run_id = store.start_run(agent_name="support", root_input="a")
+    for _ in range(2):
+        store.save_eval_case_result(
+            suite_run_id=suite_run_id,
+            run_id=run_id,
+            suite_name="matrix",
+            case_name="case a",
+            input="a",
+            final_output="ok",
+            passed=True,
+            checks=[],
+            latency_ms=1,
+            cost_usd=0,
+            variant={"temperature": 0.0},
+        )
+
+    with pytest.raises(ValueError, match="Duplicate eval result.*case a"):
+        save_baseline(store, suite_run_id, name="matrix-v1")
 
 
 def test_baseline_cli_missing_inputs_fail_with_clear_message(tmp_path):

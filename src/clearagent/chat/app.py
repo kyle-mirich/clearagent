@@ -3,7 +3,7 @@ from importlib import resources
 import json
 import os
 from pathlib import Path
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException
@@ -36,6 +36,29 @@ class ChatSettings(BaseModel):
 class ModelOption(BaseModel):
     id: str
     name: str
+
+
+class _CapturingSQLiteTraceStore(SQLiteTraceStore):
+    """Record the run started by one chat stream without a global latest lookup."""
+
+    started_run_id: str | None = None
+
+    def start_run(
+        self,
+        *,
+        agent_name: str,
+        root_input: str,
+        graph_name: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> str:
+        run_id = super().start_run(
+            agent_name=agent_name,
+            root_input=root_input,
+            graph_name=graph_name,
+            metadata=metadata,
+        )
+        self.started_run_id = run_id
+        return run_id
 
 
 def create_chat_app(
@@ -150,9 +173,13 @@ def create_chat_app(
         def stream() -> Iterator[str]:
             store.add_message(session_id, role="user", content=request.content)
             assistant_parts: list[str] = []
+            trace_store = (
+                _CapturingSQLiteTraceStore(agent.trace_db_path) if agent.trace else None
+            )
             try:
                 for chunk in agent.stream_text(
                     _messages_for_agent(agent, store.list_messages(session_id)),
+                    trace_store=trace_store,
                     extra=_request_extra(runtime_settings),
                 ):
                     assistant_parts.append(chunk)
@@ -162,9 +189,8 @@ def create_chat_app(
                 return
             if assistant_parts:
                 store.add_message(session_id, role="assistant", content="".join(assistant_parts))
-            latest_run = SQLiteTraceStore(agent.trace_db_path).get_latest_run_for_agent(agent.name)
-            if latest_run:
-                yield _sse_event("trace", {"run_id": latest_run["id"]})
+            if trace_store and trace_store.started_run_id:
+                yield _sse_event("trace", {"run_id": trace_store.started_run_id})
             yield "data: [DONE]\n\n"
 
         return StreamingResponse(
@@ -279,6 +305,9 @@ def _list_openai_models() -> list[ModelOption]:
         except Exception:
             pass
     return [
+        ModelOption(id="gpt-5.6-sol", name="GPT-5.6 Sol"),
+        ModelOption(id="gpt-5.6-terra", name="GPT-5.6 Terra"),
+        ModelOption(id="gpt-5.6-luna", name="GPT-5.6 Luna"),
         ModelOption(id="gpt-4.1-mini", name="GPT-4.1 Mini"),
         ModelOption(id="gpt-4o-mini", name="GPT-4o Mini"),
     ]
@@ -286,6 +315,10 @@ def _list_openai_models() -> list[ModelOption]:
 
 def _list_anthropic_models() -> list[ModelOption]:
     fallback = [
+        ModelOption(id="claude-fable-5", name="Claude Fable 5"),
+        ModelOption(id="claude-opus-5", name="Claude Opus 5"),
+        ModelOption(id="claude-sonnet-5", name="Claude Sonnet 5"),
+        ModelOption(id="claude-haiku-4-5", name="Claude Haiku 4.5"),
         ModelOption(id="claude-sonnet-4-20250514", name="Claude Sonnet 4"),
         ModelOption(id="claude-opus-4-1-20250805", name="Claude Opus 4.1"),
         ModelOption(id="claude-3-5-haiku-20241022", name="Claude Haiku 3.5"),

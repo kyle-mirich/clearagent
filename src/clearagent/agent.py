@@ -46,7 +46,7 @@ class Agent:
         trace_db_path: str | Path = DEFAULT_TRACE_DB,
         trace_store: TraceStore | None = None,
         max_turns: int = 8,
-        temperature: float | None = 0.0,
+        temperature: float | None = None,
         response_format: ResponseFormatInput = None,
     ):
         self.name = name
@@ -120,7 +120,8 @@ class Agent:
                         run_id=run_id, turn_id=turn_id, request=request
                     )
                 response = self.provider.complete(request)
-                _apply_structured_output(response, self.response_format)
+                if not response.tool_calls:
+                    _apply_structured_output(response, self.response_format)
             except Exception as exc:
                 trace_lifecycle.record_model_error(
                     model_call_id=model_call_id,
@@ -283,6 +284,15 @@ class Agent:
                 output_text=output,
             )
             _apply_structured_output(streamed_response, self.response_format)
+        except GeneratorExit:
+            trace_lifecycle.record_model_error(
+                model_call_id=model_call_id,
+                turn_id=turn_id,
+                messages=messages,
+                turn_started=turn_started,
+                exc=RuntimeError("stream consumer closed before completion"),
+            )
+            raise
         except Exception as exc:
             trace_lifecycle.record_model_error(
                 model_call_id=model_call_id,
@@ -326,6 +336,12 @@ def _assistant_message(response: ProviderResponse) -> Message:
             if call.provider_data:
                 serialized_call["provider_data"] = call.provider_data
             metadata["tool_calls"].append(serialized_call)
+        openai_output = response.raw.get("output")
+        if isinstance(openai_output, list):
+            metadata["openai_responses_output"] = openai_output
+        anthropic_content = response.raw.get("content")
+        if isinstance(anthropic_content, list):
+            metadata["anthropic_content"] = anthropic_content
     return Message(role="assistant", content=response.output_text, metadata=metadata)
 
 
@@ -369,10 +385,14 @@ def merge_usage(current: Usage | None, incoming: Usage | None) -> Usage | None:
         return current
     if current is None:
         return incoming.model_copy()
-    costs = [value for value in (current.cost_usd, incoming.cost_usd) if value is not None]
+    cost_usd = (
+        current.cost_usd + incoming.cost_usd
+        if current.cost_usd is not None and incoming.cost_usd is not None
+        else None
+    )
     return Usage(
         prompt_tokens=current.prompt_tokens + incoming.prompt_tokens,
         completion_tokens=current.completion_tokens + incoming.completion_tokens,
         total_tokens=current.total_tokens + incoming.total_tokens,
-        cost_usd=sum(costs) if costs else None,
+        cost_usd=cost_usd,
     )

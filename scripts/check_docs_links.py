@@ -11,7 +11,7 @@ IGNORED_SCHEMES = {"http", "https", "mailto"}
 
 
 def find_broken_links(root: str | Path) -> list[str]:
-    repo_root = Path(root)
+    repo_root = Path(root).resolve()
     broken = []
     for markdown_path in sorted(repo_root.rglob("*.md")):
         if _is_ignored_path(markdown_path):
@@ -19,7 +19,11 @@ def find_broken_links(root: str | Path) -> list[str]:
         for target in _local_link_targets(markdown_path):
             if not target.exists():
                 relative_source = markdown_path.relative_to(repo_root)
-                broken.append(f"{relative_source}: missing {target.relative_to(repo_root)}")
+                try:
+                    displayed_target = target.relative_to(repo_root)
+                except ValueError:
+                    displayed_target = target
+                broken.append(f"{relative_source}: missing {displayed_target}")
     return broken
 
 

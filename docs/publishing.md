@@ -33,6 +33,9 @@ GitHub release until the maintainer explicitly approves the release.
 uv run bash scripts/check.sh
 ```
 
+This gate already builds and inspects both distributions and runs fresh base-
+wheel and pytest-extra smoke tests outside the repository.
+
 ## Build Artifacts
 
 Build the source distribution and wheel:
@@ -55,14 +58,22 @@ client should include `clearagent/chat/static/index.html`,
 uv run python -m zipfile -l dist/clearagent-<version>-py3-none-any.whl
 ```
 
-Run a credential-free metadata and package check against both artifacts:
+Run a credential-free metadata check against both artifacts:
 
 ```bash
-uvx --from twine twine check dist/*
+uv run python -m twine check dist/*
 ```
 
-This is the required local artifact verification. It does not contact the
-upload endpoint or require PyPI credentials.
+For the authoritative repeatable artifact check, use:
+
+```bash
+uv run python scripts/check_distribution.py
+```
+
+That command builds into a fresh temporary directory, rejects missing or extra
+artifacts, inspects both archives, runs Twine, and performs the external
+installation checks. It does not contact an upload endpoint or require PyPI
+credentials.
 
 ## Fresh-Environment Smoke Test
 

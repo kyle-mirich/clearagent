@@ -68,10 +68,14 @@ from clearagent import create_agent
 
 agent = create_agent(
     name="support_agent",
-    model="openai:gpt-4.1-mini",
+    model="openai:gpt-5.6-terra",
     system_prompt="Help users with order status.",
 )
 ```
+
+ClearAgent omits `temperature` unless you set it explicitly, allowing each
+provider and model to apply its supported default. Pass `temperature=...` only
+when the selected model supports the value you need.
 
 See [Providers](providers.md) for OpenRouter, local, Ollama, Anthropic, and Google
 model URIs and credentials.

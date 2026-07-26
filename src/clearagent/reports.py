@@ -1,4 +1,5 @@
 import json
+import re
 
 from clearagent.storage.sqlite import SQLiteTraceStore
 
@@ -112,6 +113,9 @@ def trace_triage_payload(store: SQLiteTraceStore, run_id: str) -> dict:
     failures = []
     if run["status"] != "ok":
         failures.append({"kind": "run", "message": run["metadata_json"]})
+    for turn in turns:
+        if turn["status"] != "ok":
+            failures.append({"kind": "turn", "message": turn["error_json"] or turn["status"]})
     for call in model_calls:
         if call["status"] != "ok":
             failures.append({"kind": "model_call", "message": call["error_json"] or call["status"]})
@@ -181,14 +185,22 @@ def _tool_call_payload(call: dict, failures: list[dict]) -> dict:
 
 
 def _fenced(value: str, language: str = "") -> str:
-    return f"```{language}\n{value}\n```"
+    longest_run = max((len(match.group()) for match in re.finditer(r"`+", value)), default=0)
+    fence = "`" * max(3, longest_run + 1)
+    return f"{fence}{language}\n{value}\n{fence}"
 
 
-def _preview(value: str | None, limit: int = 160) -> str:
-    text = " ".join((value or "").split())
+def _preview(value: object, limit: int = 160) -> str:
+    if value is None:
+        raw = ""
+    elif isinstance(value, str):
+        raw = value
+    else:
+        raw = json.dumps(value, sort_keys=True, default=str)
+    text = " ".join(raw.split())
     if len(text) <= limit:
         return text
-    return text[: limit - 1].rstrip() + "..."
+    return text[: limit - 3].rstrip() + "..."
 
 
 def _run_input_preview(run: dict, turns: list[dict]) -> str:
