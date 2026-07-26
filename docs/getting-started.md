@@ -103,8 +103,11 @@ uv run python examples/customer_support/agent.py
 uv run clearagent eval examples.customer_support.agent:agent examples/customer_support/evals/smoke.yaml
 ```
 
-The quality gate runs the complete tests with at least 90% package line
-coverage, then Ruff, mypy, and the documentation-link checker.
+The quality gate runs the complete deterministic test suite with at least 95%
+combined line/branch coverage, at least 90% combined coverage for every touched
+product file, and complete coverage for changed executable lines and their
+branch outcomes. It then runs Ruff, mypy, documentation links, and a fresh
+built-distribution smoke test outside the repository.
 
 ## Next Steps
 

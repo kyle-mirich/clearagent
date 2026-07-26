@@ -40,9 +40,10 @@ The gate runs the complete deterministic unit, integration, and Chromium test
 suite; a 95% global combined coverage floor; a 90% floor for every touched
 product file; complete changed-line and changed-branch coverage; static and type
 checks; documentation validation; and a built-wheel smoke test outside the
-repository. It also rejects changed coverage exclusions, skip/xfail escapes,
-broad test networking, and static-client changes without a browser-test change.
-A change is not ready to merge unless the entire gate passes.
+repository. It also rejects changed coverage or static-analysis suppressions,
+skipped/xfail/deselected outcomes, collection and config overrides, broad test
+networking, and static-client changes without a browser-test change. A change is
+not ready to merge unless the entire gate passes.
 
 Focused tests are useful while iterating:
 

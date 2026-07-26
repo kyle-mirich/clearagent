@@ -12,20 +12,31 @@ def test_authoritative_shell_gate_keeps_every_required_layer():
     commands = [line.strip() for line in gate.splitlines() if line.strip().startswith("uv run")]
 
     assert gate.startswith("#!/usr/bin/env bash\nset -euo pipefail\n")
+    assert "unset PYTEST_ADDOPTS PYTEST_PLUGINS\n" in gate
     assert commands[0] == "uv run python scripts/check_test_policy.py"
     coverage_run = next(command for command in commands if "coverage run" in command)
     assert "--rcfile=/dev/null" in coverage_run
     assert "--branch" in coverage_run
     assert "--source=clearagent" in coverage_run
-    assert "-m pytest --strict-config --strict-markers" in coverage_run
-    assert coverage_run.endswith("-m pytest --strict-config --strict-markers")
+    assert "-c pyproject.toml" in coverage_run
+    assert "--disable-socket" in coverage_run
+    assert "--allow-unix-socket" in coverage_run
+    assert "-m pytest -p scripts.pytest_gate_plugin -c pyproject.toml" in coverage_run
+    assert coverage_run.endswith(
+        "-m pytest -p scripts.pytest_gate_plugin -c pyproject.toml "
+        "--strict-config --strict-markers "
+        "--disable-socket --allow-unix-socket"
+    )
     coverage_command = next(command for command in commands if "coverage report" in command)
     assert "--rcfile=/dev/null" in coverage_command
     threshold = re.search(r"--fail-under=(\d+)", coverage_command)
     assert threshold is not None and int(threshold.group(1)) >= 95
     assert any("scripts/check_changed_coverage.py" in command for command in commands)
-    assert "uv run ruff check ." in commands
-    assert "uv run python -m mypy src" in commands
+    assert (
+        "uv run ruff check --config pyproject.toml --no-fix --no-respect-gitignore ."
+        in commands
+    )
+    assert "uv run python -m mypy --config-file pyproject.toml src" in commands
     assert "uv run python scripts/check_docs_links.py" in commands
     assert commands[-1] == "uv run python scripts/check_distribution.py"
 

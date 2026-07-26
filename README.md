@@ -169,11 +169,12 @@ uv run bash scripts/check.sh
 
 The gate runs unit, integration, and real Chromium tests; requires at least 95%
 combined line/branch coverage, 90% per touched product file, and complete line
-and branch coverage for changed executable code. It rejects coverage exclusions,
-skip/xfail escapes, broad test networking, and static-client changes without a
-browser-test change; then runs Ruff, mypy, documentation links, and a fresh
-built-wheel smoke test. CI runs that gate on Python 3.14 and repeats distribution
-smoke tests on Ubuntu, macOS, and Windows.
+and branch coverage for changed executable code. It rejects coverage or static-
+analysis suppressions, skipped/xfail/deselected outcomes, collection and config
+overrides, broad test networking, and static-client changes without a browser-
+test change; then runs Ruff, mypy, documentation links, and a fresh built-wheel
+smoke test. CI runs that gate on Python 3.14 and repeats distribution smoke tests
+on Ubuntu, macOS, and Windows.
 
 ## Documentation
 

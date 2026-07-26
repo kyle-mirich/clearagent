@@ -599,7 +599,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = _parse_args(argv or sys.argv[1:])
+    args = _parse_args(argv if argv is not None else sys.argv[1:])
     if args.env_file:
         load_dotenv(args.env_file)
     try:

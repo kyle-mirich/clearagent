@@ -3,19 +3,32 @@
 from __future__ import annotations
 
 import argparse
+import ast
 from dataclasses import dataclass
+import io
 import json
 import os
 from pathlib import Path
 import re
 import subprocess
 import sys
+import token
+import tokenize
 from typing import Any
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 HUNK_HEADER = re.compile(r"^@@ -\d+(?:,\d+)? \+(?P<start>\d+)(?:,(?P<count>\d+))? @@")
-COVERAGE_PRAGMA = re.compile(r"#\s*pragma:\s*no\s+(?:cover|branch)\b", re.IGNORECASE)
+SUPPRESSION_COMMENT = re.compile(
+    r"^#\s*(?:"
+    r"pragma:\s*no\s+(?:cover|branch)\b|"
+    r"(?:ruff:\s*)?noqa\b|"
+    r"type:\s*ignore\b|"
+    r"mypy:\s*"
+    r")",
+    re.IGNORECASE,
+)
+GLOBAL_COVERAGE_MINIMUM = 95.0
 
 
 class ChangedCoverageError(RuntimeError):
@@ -87,9 +100,13 @@ def changed_coverage_failures(
         if not isinstance(report, dict):
             raise ChangedCoverageError(f"coverage JSON entry for {path!r} is malformed")
 
-        executed = {int(line) for line in report.get("executed_lines", [])}
-        missing_lines = {int(line) for line in report.get("missing_lines", [])}
-        excluded = {int(line) for line in report.get("excluded_lines", [])}
+        executed = _line_numbers(report, "executed_lines", path)
+        missing_lines = _line_numbers(report, "missing_lines", path)
+        excluded = _line_numbers(report, "excluded_lines", path)
+        if executed & missing_lines:
+            raise ChangedCoverageError(
+                f"coverage JSON marks lines as both executed and missing for {path!r}"
+            )
         executable = line_numbers & (executed | missing_lines)
         executable_count += len(executable)
         uncovered = sorted(executable & missing_lines)
@@ -146,18 +163,230 @@ def _branch_pairs(value: Any, path: str) -> set[tuple[int, int]]:
     return pairs
 
 
+def _line_numbers(report: dict[str, Any], key: str, path: str) -> set[int]:
+    if key not in report or not isinstance(report[key], list):
+        raise ChangedCoverageError(f"coverage JSON {key} for {path!r} is malformed")
+    lines: set[int] = set()
+    for value in report[key]:
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            raise ChangedCoverageError(f"coverage JSON {key} for {path!r} is malformed")
+        lines.add(value)
+    return lines
+
+
 def _combined_percent(report: dict[str, Any], path: str) -> float:
     summary = report.get("summary")
     if not isinstance(summary, dict):
         raise ChangedCoverageError(f"coverage JSON summary for {path!r} is malformed")
     try:
-        covered = int(summary["covered_lines"]) + int(summary.get("covered_branches", 0))
-        total = int(summary["num_statements"]) + int(summary.get("num_branches", 0))
+        covered = int(summary["covered_lines"]) + int(summary["covered_branches"])
+        total = int(summary["num_statements"]) + int(summary["num_branches"])
     except (KeyError, TypeError, ValueError) as exc:
         raise ChangedCoverageError(
             f"coverage JSON summary for {path!r} is malformed"
         ) from exc
     return 100.0 if total == 0 else covered * 100.0 / total
+
+
+def validate_coverage_data(
+    coverage_data: dict[str, Any], *, minimum_global_coverage: float = GLOBAL_COVERAGE_MINIMUM
+) -> None:
+    """Reject incomplete, line-only, or rounded-up coverage reports."""
+    meta = coverage_data.get("meta")
+    if not isinstance(meta, dict) or meta.get("branch_coverage") is not True:
+        raise ChangedCoverageError("coverage JSON must prove branch coverage")
+    files = coverage_data.get("files")
+    if not isinstance(files, dict):
+        raise ChangedCoverageError("coverage JSON does not contain a files mapping")
+    summed = {
+        "covered_lines": 0,
+        "num_statements": 0,
+        "covered_branches": 0,
+        "num_branches": 0,
+    }
+    for path, report in files.items():
+        if not isinstance(report, dict):
+            raise ChangedCoverageError(f"coverage JSON entry for {path!r} is malformed")
+        executed = _line_numbers(report, "executed_lines", str(path))
+        missing = _line_numbers(report, "missing_lines", str(path))
+        _line_numbers(report, "excluded_lines", str(path))
+        _branch_pairs(report.get("executed_branches"), str(path))
+        missing_branches = _branch_pairs(report.get("missing_branches"), str(path))
+        summary = report.get("summary")
+        if not isinstance(summary, dict):
+            raise ChangedCoverageError(f"coverage JSON summary for {path!r} is malformed")
+        try:
+            values = {
+                key: int(summary[key])
+                for key in (
+                    "covered_lines",
+                    "num_statements",
+                    "missing_lines",
+                    "covered_branches",
+                    "num_branches",
+                    "missing_branches",
+                )
+            }
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ChangedCoverageError(f"coverage JSON summary for {path!r} is malformed") from exc
+        if any(value < 0 for value in values.values()):
+            raise ChangedCoverageError(f"coverage JSON summary for {path!r} is malformed")
+        if (
+            len(executed) != values["covered_lines"]
+            or len(missing) != values["missing_lines"]
+            or values["covered_lines"] + values["missing_lines"]
+            != values["num_statements"]
+            or len(missing_branches) != values["missing_branches"]
+            or values["covered_branches"] + values["missing_branches"]
+            != values["num_branches"]
+        ):
+            raise ChangedCoverageError(f"coverage JSON summary for {path!r} is inconsistent")
+        for key in summed:
+            summed[key] += values[key]
+    totals = coverage_data.get("totals")
+    if not isinstance(totals, dict):
+        raise ChangedCoverageError("coverage JSON totals are malformed")
+    try:
+        covered = int(totals["covered_lines"]) + int(totals["covered_branches"])
+        total = int(totals["num_statements"]) + int(totals["num_branches"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ChangedCoverageError("coverage JSON totals are malformed") from exc
+    actual_totals = {
+        "covered_lines": int(totals["covered_lines"]),
+        "num_statements": int(totals["num_statements"]),
+        "covered_branches": int(totals["covered_branches"]),
+        "num_branches": int(totals["num_branches"]),
+    }
+    if actual_totals != summed:
+        raise ChangedCoverageError(
+            f"coverage JSON totals are inconsistent: expected={summed!r} actual={actual_totals!r}"
+        )
+    percent = 100.0 if total == 0 else covered * 100.0 / total
+    if percent + 1e-9 < minimum_global_coverage:
+        raise ChangedCoverageError(
+            f"combined global coverage is {percent:.6f}%, below {minimum_global_coverage:.2f}%"
+        )
+
+
+def map_changed_lines_to_coverage_anchors(
+    changed: dict[str, set[int]],
+    coverage_data: dict[str, Any],
+    *,
+    project_root: Path | None = None,
+) -> dict[str, set[int]]:
+    """Map changed multiline syntax to the executable statement that owns it."""
+    root = PROJECT_ROOT if project_root is None else project_root
+    files = coverage_data.get("files")
+    if not isinstance(files, dict):
+        raise ChangedCoverageError("coverage JSON does not contain a files mapping")
+    normalized_files = {str(path).replace("\\", "/"): value for path, value in files.items()}
+    mapped = {path: set(lines) for path, lines in changed.items()}
+    for path, physical_lines in sorted(changed.items()):
+        report = _coverage_file_report(path.replace("\\", "/"), normalized_files)
+        if not isinstance(report, dict):
+            raise ChangedCoverageError(f"coverage JSON has no valid entry for changed file {path!r}")
+        anchors = (
+            _line_numbers(report, "executed_lines", path)
+            | _line_numbers(report, "missing_lines", path)
+            | _line_numbers(report, "excluded_lines", path)
+        )
+        source_path = root / path
+        try:
+            source = source_path.read_text(encoding="utf-8")
+            tree = ast.parse(source, filename=str(source_path))
+        except (OSError, SyntaxError, UnicodeError) as exc:
+            raise ChangedCoverageError(f"could not parse changed Python file {path!r}: {exc}") from exc
+
+        parents = {
+            child: parent
+            for parent in ast.walk(tree)
+            for child in ast.iter_child_nodes(parent)
+        }
+        positioned_nodes = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(getattr(node, "lineno", None), int)
+            and isinstance(getattr(node, "end_lineno", None), int)
+        ]
+        semantic_lines = _semantic_source_lines(source, path)
+        docstring_lines = _docstring_source_lines(tree)
+        for line_number in sorted(physical_lines):
+            if (
+                line_number in anchors
+                or line_number not in semantic_lines
+                or line_number in docstring_lines
+            ):
+                continue
+            candidates = sorted(
+                (
+                    node
+                    for node in positioned_nodes
+                    if node.lineno <= line_number <= node.end_lineno
+                ),
+                key=lambda node: (node.end_lineno - node.lineno, -node.lineno),
+            )
+            anchor = _ancestor_coverage_anchor(candidates, parents, anchors)
+            if anchor is None:
+                raise ChangedCoverageError(
+                    f"changed Python syntax at {path}:{line_number} has no coverage statement anchor"
+                )
+            mapped[path].add(anchor)
+    return mapped
+
+
+def _semantic_source_lines(source: str, path: str) -> set[int]:
+    ignored = {
+        token.ENCODING,
+        token.ENDMARKER,
+        token.INDENT,
+        token.DEDENT,
+        token.NEWLINE,
+        tokenize.NL,
+        token.COMMENT,
+    }
+    semantic: set[int] = set()
+    try:
+        tokens = tokenize.generate_tokens(io.StringIO(source).readline)
+        for source_token in tokens:
+            if source_token.type in ignored:
+                continue
+            semantic.update(range(source_token.start[0], source_token.end[0] + 1))
+    except (IndentationError, tokenize.TokenError) as exc:
+        raise ChangedCoverageError(f"could not tokenize changed Python file {path!r}: {exc}") from exc
+    return semantic
+
+
+def _docstring_source_lines(tree: ast.AST) -> set[int]:
+    lines: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Module | ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            continue
+        body = getattr(node, "body", None)
+        if not isinstance(body, list) or not body:
+            continue
+        first = body[0]
+        if (
+            isinstance(first, ast.Expr)
+            and isinstance(first.value, ast.Constant)
+            and isinstance(first.value.value, str)
+        ):
+            lines.update(range(first.lineno, first.end_lineno + 1))
+    return lines
+
+
+def _ancestor_coverage_anchor(
+    candidates: list[ast.AST],
+    parents: dict[ast.AST, ast.AST],
+    anchors: set[int],
+) -> int | None:
+    for candidate in candidates:
+        current: ast.AST | None = candidate
+        while current is not None:
+            line_number = getattr(current, "lineno", None)
+            if line_number in anchors:
+                return line_number
+            current = parents.get(current)
+    return None
 
 
 def _git_output(arguments: list[str]) -> str:
@@ -245,6 +474,36 @@ def load_changes(base: str) -> tuple[dict[str, set[int]], set[str], set[str]]:
     return changed, touched, all_changed_paths
 
 
+def load_changed_python_lines(base: str) -> dict[str, set[int]]:
+    """Return changed physical lines for every Python file checked by static analysis."""
+    diff = _git_output(
+        [
+            "diff",
+            "--unified=0",
+            "--no-color",
+            "--find-renames",
+            "--diff-filter=ACMRT",
+            base,
+            "--",
+            "*.py",
+        ]
+    )
+    changed = parse_changed_lines(diff)
+    untracked_paths = set(
+        filter(
+            None,
+            _git_output(["ls-files", "--others", "--exclude-standard"]).splitlines(),
+        )
+    )
+    for path in sorted(untracked_paths):
+        source_path = PROJECT_ROOT / path
+        if not path.endswith(".py") or not source_path.is_file():
+            continue
+        line_count = len(source_path.read_text(encoding="utf-8").splitlines())
+        changed[path] = set(range(1, line_count + 1))
+    return changed
+
+
 def require_browser_test_for_static_changes(changed_paths: set[str]) -> None:
     static_changed = sorted(
         path for path in changed_paths if path.startswith("src/clearagent/chat/static/")
@@ -260,7 +519,7 @@ def require_browser_test_for_static_changes(changed_paths: set[str]) -> None:
         )
 
 
-def find_changed_coverage_pragmas(
+def find_changed_suppressions(
     changed: dict[str, set[int]], project_root: Path = PROJECT_ROOT
 ) -> dict[str, list[int]]:
     failures: dict[str, list[int]] = {}
@@ -268,31 +527,49 @@ def find_changed_coverage_pragmas(
         source_path = project_root / path
         if not source_path.is_file():
             continue
-        lines = source_path.read_text(encoding="utf-8").splitlines()
+        try:
+            source = source_path.read_text(encoding="utf-8")
+            comments = {
+                source_token.start[0]: source_token.string
+                for source_token in tokenize.generate_tokens(io.StringIO(source).readline)
+                if source_token.type == token.COMMENT
+            }
+        except (OSError, UnicodeError, IndentationError, tokenize.TokenError) as exc:
+            raise ChangedCoverageError(f"could not inspect suppressions in {path!r}: {exc}") from exc
         rejected = sorted(
             line_number
             for line_number in changed_lines
-            if line_number <= len(lines) and COVERAGE_PRAGMA.search(lines[line_number - 1])
+            if line_number in comments and SUPPRESSION_COMMENT.search(comments[line_number])
         )
         if rejected:
             failures[path] = rejected
     return failures
 
 
+def find_changed_coverage_pragmas(
+    changed: dict[str, set[int]], project_root: Path = PROJECT_ROOT
+) -> dict[str, list[int]]:
+    """Backward-compatible helper returning changed suppression directives."""
+    return find_changed_suppressions(changed, project_root)
+
+
 def run(coverage_json: Path, *, base: str | None = None) -> None:
     resolved_base = resolve_base(base)
     with coverage_json.open(encoding="utf-8") as report_file:
         coverage_data = json.load(report_file)
+    validate_coverage_data(coverage_data)
     changed, touched, changed_paths = load_changes(resolved_base)
     require_browser_test_for_static_changes(changed_paths)
-    pragma_failures = find_changed_coverage_pragmas(changed)
-    if pragma_failures:
+    changed_python = load_changed_python_lines(resolved_base)
+    suppression_failures = find_changed_suppressions(changed_python)
+    if suppression_failures:
         raise ChangedCoverageError(
-            "changed coverage-suppression pragmas are forbidden:\n"
-            + _line_failure_details(pragma_failures)
+            "changed coverage or static-analysis suppressions are forbidden:\n"
+            + _line_failure_details(suppression_failures)
         )
+    mapped_changed = map_changed_lines_to_coverage_anchors(changed, coverage_data)
     failures, executable_count = changed_coverage_failures(
-        changed,
+        mapped_changed,
         coverage_data,
         touched=touched,
     )

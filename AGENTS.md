@@ -72,9 +72,9 @@ reader-facing documentation in the same change.
 Tests must be deterministic and must not depend on real credentials, external
 network access, user home-directory state, wall-clock timing, or test order
 unless those dependencies are explicitly isolated. Do not delete or weaken a
-test, lower a coverage threshold, add a skip or xfail, or widen an ignore merely
-to make a change pass. Any justified replacement must retain or strengthen the
-same contract coverage.
+test, lower a coverage threshold, add a skip, xfail, deselection, collection
+override, suppression comment, or analysis ignore merely to make a change pass.
+Any justified replacement must retain or strengthen the same contract coverage.
 
 Changes to CI, test configuration, fixtures, or `scripts/check.sh` must include
 evidence that the gate still rejects a deliberately failing case; a successful
