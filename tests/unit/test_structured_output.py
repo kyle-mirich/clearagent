@@ -160,6 +160,33 @@ def test_structured_output_allows_intermediate_tool_call_without_text(tmp_path):
     ]
 
 
+def test_structured_output_ignores_intermediate_text_when_response_calls_a_tool(tmp_path):
+    db_path = tmp_path / "traces.sqlite"
+    intermediate = ProviderResponse.fake_tool_call(
+        ToolCall(id="call_1", name="lookup_label", arguments={"ticket_id": "T1"})
+    )
+    intermediate.output_text = "I will look up the label first."
+    provider = FakeProvider(
+        [
+            intermediate,
+            ProviderResponse.fake_text('{"label": "billing", "confidence": 0.99}'),
+        ]
+    )
+    agent = create_agent(
+        name="classifier",
+        model="openai:gpt-4.1-mini",
+        provider=provider,
+        tools=[lookup_label],
+        response_format=Classification,
+        trace_db_path=db_path,
+    )
+
+    result = agent.run("Classify this ticket")
+
+    assert result.structured_output == {"label": "billing", "confidence": 0.99}
+    assert len(result.tool_calls) == 1
+
+
 def test_streaming_validates_structured_output_before_marking_success(tmp_path):
     db_path = tmp_path / "traces.sqlite"
     agent = create_agent(

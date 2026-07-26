@@ -1,9 +1,18 @@
 from typing import Any
 
 SECRET_KEYS = {
+    "access_token",
     "api_key",
     "authorization",
+    "client_secret",
+    "cookie",
+    "id_token",
+    "private_key",
+    "proxy-authorization",
+    "refresh_token",
+    "set-cookie",
     "x-api-key",
+    "x-auth-token",
     "openai_api_key",
     "anthropic_api_key",
     "google_api_key",

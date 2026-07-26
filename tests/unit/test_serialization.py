@@ -26,6 +26,11 @@ class Printable:
         return "printable"
 
 
+class ReverseIterationSet(set):
+    def __iter__(self):
+        return iter(["zulu", "alpha"])
+
+
 def test_json_safe_normalizes_supported_and_fallback_values():
     value = {
         "model": Payload(name="demo"),
@@ -47,3 +52,10 @@ def test_json_safe_normalizes_supported_and_fallback_values():
 def test_stringify_preserves_strings_and_compacts_other_values():
     assert stringify("already text") == "already text"
     assert stringify({"ok": True}) == '{"ok":true}'
+
+
+def test_json_safe_canonicalizes_set_values_instead_of_preserving_hash_order():
+    value = {"labels": ReverseIterationSet({"alpha", "zulu"})}
+
+    assert json_safe(value) == {"labels": ["alpha", "zulu"]}
+    assert stringify(value) == '{"labels":["alpha","zulu"]}'

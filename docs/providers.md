@@ -6,9 +6,9 @@ deterministic fake providers for tests and examples.
 
 Model URIs use `provider:model`:
 
-- `openai:gpt-4.1-mini`
+- `openai:gpt-5.6-terra`
 - `openrouter:anthropic/claude-sonnet-4.5`
-- `anthropic:claude-sonnet-4-5`
+- `anthropic:claude-sonnet-5`
 - `google:gemini-2.5-flash`
 - `local:llama3.1`
 - `local:http://localhost:8000/v1?model=llama3.1`
@@ -17,6 +17,18 @@ Model URIs use `provider:model`:
 OpenAI model URIs use the canonical Responses API. OpenRouter, local, and
 Ollama model URIs use the OpenAI-compatible Chat Completions adapter. Anthropic
 and Google model URIs use native request/response shapes.
+
+Agent requests omit `temperature` by default so the selected model can use its
+provider-supported default; explicit temperature values remain available.
+During tool loops, the OpenAI adapter sends every prior Responses output item
+before function results, including opaque reasoning items, and the Anthropic
+adapter sends the complete original assistant content sequence, including
+thinking and redacted-thinking blocks.
+
+The local chat queries OpenAI and Anthropic model catalogs when the matching
+API key is available. Its offline fallback keeps older choices and includes
+GPT-5.6 Sol, Terra, and Luna plus Claude Fable 5, Opus 5, Sonnet 5, and Haiku
+4.5. The provider catalog remains authoritative when it is reachable.
 
 `local:<model>` sends OpenAI-compatible requests to
 `http://localhost:8000/v1` without an API key. Use

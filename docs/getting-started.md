@@ -68,10 +68,14 @@ from clearagent import create_agent
 
 agent = create_agent(
     name="support_agent",
-    model="openai:gpt-4.1-mini",
+    model="openai:gpt-5.6-terra",
     system_prompt="Help users with order status.",
 )
 ```
+
+ClearAgent omits `temperature` unless you set it explicitly, allowing each
+provider and model to apply its supported default. Pass `temperature=...` only
+when the selected model supports the value you need.
 
 See [Providers](providers.md) for OpenRouter, local, Ollama, Anthropic, and Google
 model URIs and credentials.
@@ -99,8 +103,11 @@ uv run python examples/customer_support/agent.py
 uv run clearagent eval examples.customer_support.agent:agent examples/customer_support/evals/smoke.yaml
 ```
 
-The quality gate runs the complete tests with at least 90% package line
-coverage, then Ruff, mypy, and the documentation-link checker.
+The quality gate runs the complete deterministic test suite with at least 95%
+combined line/branch coverage, at least 90% combined coverage for every touched
+product file, and complete coverage for changed executable lines and their
+branch outcomes. It then runs Ruff, mypy, documentation links, and a fresh
+built-distribution smoke test outside the repository.
 
 ## Next Steps
 

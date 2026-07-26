@@ -130,6 +130,17 @@ def test_graph_rejects_cycle_before_calling_provider(tmp_path):
     assert provider.completed_requests == []
 
 
+def test_graph_rejects_duplicate_node_names_instead_of_overwriting():
+    first = create_agent(name="worker", model="fake:model", provider=FakeProvider())
+    duplicate = create_agent(name="worker", model="fake:model", provider=FakeProvider())
+    graph = AgentGraph("duplicate").add_node(first)
+
+    with pytest.raises(ValueError, match="already contains a node named 'worker'"):
+        graph.add_node(duplicate)
+
+    assert graph.nodes["worker"] is first
+
+
 def test_graph_respects_trace_false_and_preserves_result_metadata(tmp_path):
     db_path = tmp_path / "traces.sqlite"
 

@@ -42,6 +42,8 @@ bad caller cannot leave an unreadable row behind.
 
 New sessions default to the title `New chat`. Explicit session titles and
 first-user-message titles are whitespace-normalized before they are persisted.
+Session lists are ordered by most recent message activity, including when
+multiple updates occur within the same timestamp second.
 
 ## Shape
 

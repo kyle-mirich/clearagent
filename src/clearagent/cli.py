@@ -25,6 +25,13 @@ app.add_typer(baseline_app, name="baseline")
 console = Console()
 
 
+def _cli_tracing_config() -> tuple[bool, Path]:
+    try:
+        return tracing_config()
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+
 def import_object(path: str) -> Any:
     cwd = str(Path.cwd())
     if cwd not in sys.path:
@@ -75,7 +82,7 @@ db_path = ".clearagent/traces.sqlite"
 def run(agent_path: str, input: str, no_trace: bool = typer.Option(False, "--no-trace")) -> None:
     load_dotenv()
     agent = import_object(agent_path)
-    config_trace, config_db = tracing_config()
+    config_trace, config_db = _cli_tracing_config()
     agent.trace_db_path = config_db
     result = agent.run(input, trace=config_trace and not no_trace)
     console.print(result.output)
@@ -99,7 +106,7 @@ def chat(
             "ClearAgent chat is local-only. Keep --host on a loopback address."
         )
     agent = import_object(agent_path)
-    config_trace, config_db = tracing_config()
+    config_trace, config_db = _cli_tracing_config()
     agent.trace = config_trace
     agent.trace_db_path = config_db
     uvicorn.run(
@@ -126,7 +133,7 @@ def eval_command(
         raise typer.BadParameter("suite_path is required unless using 'eval all'.")
     load_dotenv()
     agent = import_object(agent_path)
-    _, config_db = tracing_config()
+    _, config_db = _cli_tracing_config()
     agent.trace_db_path = trace_db or config_db
     report = EvalRunner(agent).run_suite(EvalSuite.from_yaml(suite_path))
     console.print(f"Suite: {report.suite_name}")
@@ -162,7 +169,7 @@ def trace_to_eval(
         )
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
-    console.print(str(out))
+    typer.echo(str(out))
 
 
 @app.command("trace-report")
@@ -179,7 +186,7 @@ def trace_report(
         raise typer.BadParameter(str(exc)) from exc
     if out:
         out.write_text(report, encoding="utf-8")
-        console.print(str(out))
+        typer.echo(str(out))
     else:
         console.print(report)
 
@@ -308,16 +315,22 @@ def _request_json(run_id: str, turn: int, trace_db: Path) -> dict[str, Any]:
 def promptfoo_export(agent_path: str, suite_path: str, out: Path) -> None:
     from clearagent.evals.promptfoo_export import export_promptfoo_config
 
-    export_promptfoo_config(agent_path, EvalSuite.from_yaml(suite_path), out)
-    console.print(str(out))
+    try:
+        export_promptfoo_config(agent_path, EvalSuite.from_yaml(suite_path), out)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(str(out))
 
 
 @promptfoo_app.command("target")
 def promptfoo_target(agent_path: str, out: Path) -> None:
     from clearagent.evals.promptfoo_export import write_promptfoo_target
 
-    write_promptfoo_target(agent_path, out)
-    console.print(str(out))
+    try:
+        write_promptfoo_target(agent_path, out)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(str(out))
 
 
 @baseline_app.command("save")
