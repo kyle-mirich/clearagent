@@ -20,6 +20,7 @@ def test_ci_runs_authoritative_gate_for_pull_requests_main_and_merge_queue():
         "pull_request": "",
         "merge_group": "",
     }
+    assert workflow["env"]["CLEARAGENT_DISTRIBUTION_PREFETCH"] == "1"
     quality = workflow["jobs"]["quality"]
     assert quality["runs-on"] == "ubuntu-latest"
     assert "pull_request.base.sha" in quality["env"]["CLEARAGENT_COVERAGE_BASE"]

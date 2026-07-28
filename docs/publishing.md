@@ -74,9 +74,11 @@ uv run python scripts/check_distribution.py
 That command builds into a fresh temporary directory, rejects missing or extra
 artifacts, requires the complete source-package inventory in both archives,
 validates every wheel `RECORD` hash and size, runs Twine, and performs the
-external installation checks. Its build and installation subprocesses are
-forced offline after the locked development environment has populated the `uv`
-cache. It does not contact an upload endpoint or require PyPI credentials.
+external installation checks. The artifact build and authoritative installation
+smokes are forced offline. Clean CI runners first perform one explicit dependency
+prefetch from the built wheel (including the pytest extra); local runs reuse the
+cache populated by the locked development environment. The gate does not contact
+an upload endpoint or require PyPI credentials.
 
 ## Fresh-Environment Smoke Test
 

@@ -380,7 +380,7 @@ def inspect_sdist(
             )
 
 
-def _clean_environment() -> dict[str, str]:
+def _clean_environment(*, offline: bool) -> dict[str, str]:
     environment = os.environ.copy()
     for variable in (
         "PYTHONHOME",
@@ -391,7 +391,10 @@ def _clean_environment() -> dict[str, str]:
         environment.pop(variable, None)
     environment["NO_COLOR"] = "1"
     environment["UV_NO_PROGRESS"] = "1"
-    environment["UV_OFFLINE"] = "1"
+    if offline:
+        environment["UV_OFFLINE"] = "1"
+    else:
+        environment.pop("UV_OFFLINE", None)
     return environment
 
 
@@ -401,11 +404,12 @@ def run_checked(
     cwd: Path,
     description: str,
     echo_output: bool = False,
+    offline: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
         command,
         cwd=cwd,
-        env=_clean_environment(),
+        env=_clean_environment(offline=offline),
         text=True,
         capture_output=True,
         check=False,
@@ -439,6 +443,28 @@ def _create_venv(uv: str, root: Path, name: str) -> tuple[Path, Path]:
         description=f"create {name}",
     )
     return venv, _venv_executable(venv, "python")
+
+
+def prefetch_install_dependencies(uv: str, wheel: Path, smoke_root: Path) -> None:
+    """Prime uv's cache once so the authoritative installs can stay offline."""
+    _, python = _create_venv(uv, smoke_root, "prefetch-venv")
+    wheel_requirement = f"clearagent[pytest] @ {wheel.resolve().as_uri()}"
+    run_checked(
+        [
+            uv,
+            "pip",
+            "install",
+            "--only-binary",
+            ":all:",
+            "--python",
+            str(python),
+            wheel_requirement,
+        ],
+        cwd=smoke_root,
+        description="prefetch distribution dependencies",
+        echo_output=True,
+        offline=False,
+    )
 
 
 def verify_base_install(uv: str, wheel: Path, smoke_root: Path) -> None:
@@ -523,6 +549,12 @@ def run_distribution_gate(project_root: Path = PROJECT_ROOT) -> None:
             description="twine-check exact artifacts",
             echo_output=True,
         )
+        if os.environ.get("CLEARAGENT_DISTRIBUTION_PREFETCH") == "1":
+            prefetch_install_dependencies(
+                uv,
+                artifacts.wheel,
+                temporary_root / "dependency-prefetch",
+            )
         verify_base_install(uv, artifacts.wheel, temporary_root / "base-smoke")
         verify_pytest_extra(uv, artifacts.wheel, temporary_root / "pytest-smoke")
 

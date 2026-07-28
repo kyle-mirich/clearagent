@@ -367,3 +367,14 @@ def test_distribution_subprocesses_are_forced_offline(tmp_path: Path) -> None:
     )
 
     assert result.stdout.strip() == "1"
+
+
+def test_distribution_prefetch_can_explicitly_use_the_network(tmp_path: Path) -> None:
+    result = run_checked(
+        [sys.executable, "-c", "import os; print(os.environ.get('UV_OFFLINE'))"],
+        cwd=tmp_path,
+        description="inspect prefetch environment",
+        offline=False,
+    )
+
+    assert result.stdout.strip() == "None"

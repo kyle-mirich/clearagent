@@ -9,6 +9,9 @@ on:
 permissions:
   contents: read
 
+env:
+  CLEARAGENT_DISTRIBUTION_PREFETCH: "1"
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.event.merge_group.head_sha || github.ref }}
   cancel-in-progress: true
