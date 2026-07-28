@@ -1,6 +1,6 @@
 from clearagent import create_agent
 from clearagent.graph import AgentGraph
-from clearagent.providers.base import FakeProvider, ProviderResponse
+from clearagent.providers import FakeProvider, ProviderResponse
 
 
 planner = create_agent(

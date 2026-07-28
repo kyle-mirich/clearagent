@@ -50,7 +50,10 @@ def test_anthropic_provider_builds_native_request_and_parses_response():
 
 def test_google_provider_builds_native_request_and_parses_response():
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url == "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+        assert (
+            request.url
+            == "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+        )
         assert request.headers["x-goog-api-key"] == "test-key"
         assert request.read()
         return httpx.Response(

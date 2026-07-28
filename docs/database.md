@@ -24,6 +24,12 @@ The trace store records:
 Provider requests are saved before the model call. Secrets in headers and
 request bodies are redacted before persistence.
 
+`SQLiteTraceStore` implements the public `TraceStore` read/write protocol. A
+custom implementation supplied to an agent is used by runtime execution,
+graphs, eval persistence, trace-aware checks, reports, and the agent-backed chat
+trace viewer. See [Architecture](architecture.md#storage-boundary) for the
+boundary; standalone `--trace-db` CLI inspection remains SQLite-specific.
+
 ## Chat Store
 
 Default path:
@@ -46,5 +52,7 @@ initialization. This keeps existing local databases usable as the schema evolves
 
 ## Git Hygiene
 
-SQLite runtime files are local artifacts and should not be committed. The
-project `.gitignore` excludes `.clearagent/*.sqlite`.
+SQLite runtime files and their `-wal` and `-shm` sidecars are local artifacts
+and should not be committed. `.clearagent/config.toml` is different: it is an
+optional project configuration created by `clearagent init` and may be tracked
+after its shared settings are reviewed.

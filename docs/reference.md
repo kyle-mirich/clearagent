@@ -5,11 +5,20 @@ most often.
 
 ## Python API
 
-Import the main authoring helpers from `clearagent`:
+Import public values from package entry points rather than implementation
+modules:
 
 ```python
-from clearagent import create_agent, tool
+from clearagent import __version__, create_agent, tool
+from clearagent.providers import FakeProvider, ProviderResponse, ToolCall
+from clearagent.storage import SQLiteTraceStore, TraceRun, TraceStore
 ```
+
+The documented package entry points are the supported import boundary.
+Submodules such as `clearagent.providers.base` and
+`clearagent.storage.protocol` remain implementation details even when they are
+visible in a checkout. The distribution includes `py.typed`, so type checkers
+consume ClearAgent's inline annotations.
 
 ### `create_agent`
 
@@ -26,7 +35,8 @@ Common arguments:
 - `trace_store`: optional implementation of the public `TraceStore` protocol;
   `SQLiteTraceStore` is the bundled default
 - `max_turns`: maximum model/tool loop iterations
-- `temperature`: provider temperature value
+- `temperature`: optional provider temperature; omitted by default so each
+  provider can apply its supported default
 - `provider`: optional custom provider, useful for tests
 - `response_format`: optional Pydantic model or provider response-format object
 
@@ -68,11 +78,16 @@ result = validate_tool_contract(
 assert result.passed
 ```
 
+Omitting `expected` checks only that argument validation and tool execution
+succeed. Passing `expected=None` explicitly requires the tool to return `None`.
+
 ### `FakeProvider`
 
-`FakeProvider` is available from `clearagent.providers.base` for deterministic
-tests and examples. It accepts queued `ProviderResponse` objects or exceptions
-and records completed requests.
+`FakeProvider` is available from `clearagent.providers` for deterministic tests
+and examples. It accepts queued `ProviderResponse` objects or exceptions and
+records completed requests. The same package exports provider adapters,
+`Provider`, `ProviderError`, `ProviderRequest`, `ProviderResponse`,
+`ResponseFormat`, `ToolCall`, `Usage`, `ModelURI`, and `parse_model_uri`.
 
 ### Runtime Results
 
@@ -84,6 +99,14 @@ Parsed provider tool calls use `clearagent.providers.base.ToolCall`. Its
 `provider_data` mapping preserves opaque provider metadata needed for a later
 turn, such as Google thought signatures; applications should pass it through
 without interpreting it.
+
+When tracing is active, `RunResult.trace_store` holds the exact `TraceStore`
+used for the run. Custom-store results have no SQLite `trace_db_path`. The store
+field is an in-process handle and is excluded from `model_dump()` and JSON
+serialization, including generated JSON Schema. `usage` is typed as
+`clearagent.providers.Usage | None`. Runtime result tool calls and usage accept
+only their documented fields; invalid extension fields raise validation errors
+instead of being silently discarded.
 
 `Agent.stream_text(...)` yields text chunks. When an agent has tools, ClearAgent
 runs the bounded tool loop and yields its final output as one chunk.
@@ -115,38 +138,82 @@ invalid bounds, and flows that exceed `max_nodes`.
 - `clearagent.evals.EvalRunner(agent).run_suite(suite)` executes and persists
   results.
 - `clearagent.storage.TraceStore` is the persistence protocol accepted by
-  agents and graphs.
+  agents and graphs and used by evals, trace-aware checks, reports, and
+  agent-backed chat trace endpoints.
 - `clearagent.storage.SQLiteTraceStore` is the bundled local implementation.
 
-Custom trace stores must implement the complete `TraceStore` protocol. Chat
-session persistence remains separate in `clearagent.chat.ChatStore`.
+Custom trace stores must implement the complete `TraceStore` protocol: runtime
+run/turn/model/tool writes, run/model/tool reads, and eval suite/result
+persistence. `EvalRunner` uses `agent.trace_store` when present. Trace-aware
+checks read the store retained on `RunResult`, with `trace_db_path` as a SQLite
+compatibility fallback. Chat session persistence remains separate in
+`clearagent.chat.ChatStore`. The protocol is runtime-checkable, so
+`isinstance(store, TraceStore)` can validate the structural surface.
+`EvalRunner` performs that validation before starting a suite and raises a
+clear error for an incomplete store.
+
+The read contract is not an unstructured SQLite detail. `TraceRun`,
+`TraceTurn`, `ModelCallRecord`, `ToolCallRecord`, and `EvalCaseResultRecord` are
+public `TypedDict` exports from `clearagent.storage`; they define every required
+key, including serialized `*_json` values consumed by checks, reports, and the
+chat trace viewer. A custom store should return those shapes even when its own
+backend is not relational.
 
 ## CLI
 
 The installed console script is `clearagent`.
 
 ```bash
+uv run clearagent --version
 uv run clearagent init
 uv run clearagent run <agent_module:object> "input text"
 uv run clearagent run <agent_module:object> "input text" --no-trace
 uv run clearagent chat <agent_module:object>
 uv run clearagent chat <agent_module:object> --allow-settings-mutation
-uv run clearagent eval <agent_module:object> <suite.yaml>
-uv run clearagent trace list
-uv run clearagent trace show <run_id>
-uv run clearagent trace turns <run_id>
+uv run clearagent eval <agent_module:object> <suite.yaml> --json
+uv run clearagent trace list --json
+uv run clearagent trace show <run_id> --json
+uv run clearagent trace turns <run_id> --json
 uv run clearagent request <run_id> --turn 0
 uv run clearagent replay-request <run_id> --turn 0 --out request.json
 uv run clearagent replay <run_id> --turn 0
-uv run clearagent diff <run_id> --turn 0
+uv run clearagent diff <run_id> --turn 0 --json
 uv run clearagent trace-to-eval <run_id> --out generated.yaml
 uv run clearagent trace-report <run_id> --out report.md
 uv run clearagent iterate <agent_module:object> <suite.yaml> --model openai:gpt-4.1-mini --temperature 0.0
 uv run clearagent promptfoo export <agent_module:object> <suite.yaml> promptfooconfig.yaml
 uv run clearagent promptfoo target <agent_module:object> .clearagent/promptfoo_target.py
 uv run clearagent baseline save <suite_run_id> --name v1
-uv run clearagent baseline compare <baseline_name> <suite_run_id>
+uv run clearagent baseline compare <baseline_name> <suite_run_id> --json
 ```
+
+The root command and each command group provide descriptions through `--help`.
+Human-readable output remains the default. These commands accept `--json` for
+stable machine-readable standard output:
+
+| Command | JSON shape |
+| --- | --- |
+| `eval` | the complete `EvalReport`, including counts, results, and `suite_run_id` |
+| `trace list` | `{"runs": [...]}` with stable run summaries |
+| `trace show` | one run detail with timing and usage |
+| `trace turns` | `{"run_id": "...", "turns": [...]}` |
+| `diff` | `changed` plus before/after output, finish reason, and usage |
+| `baseline compare` | baseline identity plus unchanged, regression, and improvement lists |
+
+`request` and `iterate` always emit JSON. JSON is emitted even when `eval`
+finds failed cases or `diff` detects a change, so automation can parse the
+result before checking the exit status.
+
+Successful commands exit zero. `eval` exits 1 when any case fails, and `diff`
+exits 1 when the replayed response changed. `baseline compare` exits zero when
+the comparison succeeds; inspect its `regressions` list to enforce a policy.
+Malformed arguments, missing objects or trace rows, and other command errors
+exit non-zero with an explanatory message.
+
+Default `replay` and `diff` validate stored cloud-provider endpoints before
+adding fresh credentials. They reject endpoint mismatches without making an
+HTTP request and select the replay adapter from the stored API shape, including
+legacy OpenAI Chat Completions traces.
 
 `agent_module:object` is imported from the current working directory. For
 example:
@@ -164,9 +231,10 @@ object is missing.
 ## Eval Suite Format
 
 Eval suites are YAML mappings with a `name`, optional `type`, optional
-`description`, optional `defaults`, optional `matrix`, and a list of `cases`.
-`defaults` and `matrix` must be mappings. Matrix `models` and `temperatures`
-must be lists when present.
+`description`, optional `defaults`, optional `matrix`, and one or more `cases`.
+Every case requires at least one `checks` entry. Empty suites and cases without
+checks are rejected before any provider call. `defaults` and `matrix` must be
+mappings. Matrix `models` and `temperatures` must be lists when present.
 
 ```yaml
 name: smoke
@@ -181,6 +249,13 @@ cases:
 
 Cases may also carry optional `expected`, `reference_notes`, and `split` fields
 for interoperable datasets. The local deterministic checks do not require them.
+
+Temperature-only matrices keep the agent's current model and provider. Pass an
+explicit `provider_factory` to `EvalRunner` to construct providers for matrix
+variants. Persisted matrix results include canonical variant JSON, and baseline
+comparison identities append that variant JSON so repeated case names do not
+collapse across models or temperatures. Non-matrix baseline identities remain
+the plain case name.
 
 Available output check names:
 
@@ -207,6 +282,10 @@ Available trace-aware check names:
 - `max_turns`
 - `called_tool`
 - `not_called_tool`
+
+`regex` requires a string operand, while `refuses` and `structured_output`
+require booleans. Trace-aware checks fail when trace data or the referenced run
+is unavailable rather than treating missing evidence as success.
 
 ## Providers
 
@@ -240,6 +319,11 @@ controls:
 - `settings_admin_token="..."` requires `X-ClearAgent-Admin-Token` for runtime
   settings changes.
 
+`GET /api/models?provider=<provider>` queries the current OpenAI, Anthropic, or
+OpenRouter model catalog when the matching API key is configured, and otherwise
+returns the bundled fallback snapshot. See [Providers](providers.md) for the
+discovery rules and current fallback families.
+
 Trace viewer endpoints:
 
 - `GET /api/traces` returns recent local trace summaries for the packaged visual
@@ -261,7 +345,12 @@ Default local runtime paths:
 - `.clearagent/chat.sqlite`
 - `.clearagent/promptfoo_target.py`
 
-Do not commit local trace databases or generated runtime files.
+`clearagent init` creates `.clearagent/config.toml` only when it is absent; the
+file may be reviewed and committed as shared project configuration. Trace and
+chat databases, SQLite sidecars, Promptfoo targets, replay exports, generated
+reports/evals, and package artifacts are generated local files and should not be
+committed unless a person deliberately promotes the output into maintained
+project material.
 
 ## Examples
 

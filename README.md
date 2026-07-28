@@ -68,7 +68,7 @@ key:
 
 ```python
 from clearagent import create_agent, tool
-from clearagent.providers.base import FakeProvider, ProviderResponse, ToolCall
+from clearagent.providers import FakeProvider, ProviderResponse, ToolCall
 
 
 @tool
@@ -108,6 +108,7 @@ Run the agent and locate its local SQLite trace:
 
 ```bash
 uv run python agent.py
+test -f .clearagent/traces.sqlite
 uv run clearagent trace list
 ```
 
@@ -137,7 +138,9 @@ uv run clearagent trace-to-eval <run_id> --out generated.yaml
 ```
 
 See [Installation](https://github.com/kyle-mirich/clearagent/blob/main/docs/install.md)
-for live provider keys and optional extras. Release maintainers can follow the
+for live provider keys and optional extras.
+
+Release maintainers can follow the
 [publishing checklist](https://github.com/kyle-mirich/clearagent/blob/main/docs/publishing.md).
 
 ## Project Structure
@@ -148,10 +151,12 @@ for live provider keys and optional extras. Release maintainers can follow the
   explicitly opt-in
 - `examples/` - runnable agents, graph flows, and eval suites
 - `docs/` - curated guides, architecture notes, and API/CLI reference
-- `scripts/check.sh` - the same 90%-coverage quality gate used by CI
+- `scripts/check.sh` - the same branch-coverage, browser, docs, type, and built-
+  distribution quality gate used by CI
 
-The paid provider compatibility suite is separate from that gate. Contributors
-can follow the bounded opt-in workflow in
+Pytest blocks external sockets by default. The paid provider compatibility
+suite is a separate, explicitly opted-in script outside that gate. Contributors
+can follow the bounded workflow in
 [Live Provider Compatibility](https://github.com/kyle-mirich/clearagent/blob/main/docs/live-provider-compatibility.md).
 
 ## Contributor Setup
@@ -160,13 +165,19 @@ These commands are for a checkout of this repository, not for applications that
 depend on ClearAgent:
 
 ```bash
-uv sync --all-extras --dev
-uv run bash scripts/check.sh
+uv sync --locked --all-extras --dev
+uv run playwright install chromium
+./scripts/check.sh
 ```
 
-The gate runs the full tests with at least 90% package line coverage, followed
-by Ruff, mypy, and documentation-link checks. CI runs the same gate on Python
-3.14.
+The gate runs unit, integration, and real Chromium tests; requires at least 95%
+combined line/branch coverage, 90% per touched product file, and complete line
+and branch coverage for changed executable code. It rejects coverage or static-
+analysis suppressions, skipped/xfail/deselected outcomes, collection and config
+overrides, broad test networking, and static-client changes without a browser-
+test change; then runs Ruff lint and formatting, mypy, documentation links, and
+a fresh built-wheel smoke test. CI runs that gate on Python 3.14 and repeats
+distribution smoke tests on Ubuntu, macOS, and Windows.
 
 ## Documentation
 

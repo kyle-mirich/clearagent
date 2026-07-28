@@ -3,7 +3,7 @@ from importlib import resources
 import json
 import os
 from pathlib import Path
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException
@@ -16,6 +16,7 @@ from clearagent.chat.store import DEFAULT_CHAT_DB, ChatMessage, ChatSession, Cha
 from clearagent.messages import Message
 from clearagent.providers.registry import provider_for_model
 from clearagent.reports import list_trace_runs_payload, trace_triage_payload
+from clearagent.storage.protocol import TraceStore
 from clearagent.storage.sqlite import SQLiteTraceStore
 
 
@@ -36,6 +37,34 @@ class ChatSettings(BaseModel):
 class ModelOption(BaseModel):
     id: str
     name: str
+
+
+class _CapturingTraceStore:
+    """Record the run started by one stream while preserving an injected store."""
+
+    def __init__(self, store: TraceStore) -> None:
+        self.store = store
+        self.started_run_id: str | None = None
+
+    def start_run(
+        self,
+        *,
+        agent_name: str,
+        root_input: str,
+        graph_name: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> str:
+        run_id = self.store.start_run(
+            agent_name=agent_name,
+            root_input=root_input,
+            graph_name=graph_name,
+            metadata=metadata,
+        )
+        self.started_run_id = run_id
+        return run_id
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.store, name)
 
 
 def create_chat_app(
@@ -111,13 +140,13 @@ def create_chat_app(
     @app.get("/api/triage/runs/{run_id}")
     def triage_run(run_id: str) -> dict:
         try:
-            return trace_triage_payload(SQLiteTraceStore(agent.trace_db_path), run_id)
+            return trace_triage_payload(_trace_store(agent), run_id)
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.get("/api/traces")
     def list_traces() -> list[dict]:
-        return list_trace_runs_payload(SQLiteTraceStore(agent.trace_db_path))
+        return list_trace_runs_payload(_trace_store(agent))
 
     @app.post("/api/sessions", response_model=ChatSession)
     def create_session() -> ChatSession:
@@ -150,9 +179,11 @@ def create_chat_app(
         def stream() -> Iterator[str]:
             store.add_message(session_id, role="user", content=request.content)
             assistant_parts: list[str] = []
+            trace_store = _CapturingTraceStore(_trace_store(agent)) if agent.trace else None
             try:
                 for chunk in agent.stream_text(
                     _messages_for_agent(agent, store.list_messages(session_id)),
+                    trace_store=cast(TraceStore, trace_store),
                     extra=_request_extra(runtime_settings),
                 ):
                     assistant_parts.append(chunk)
@@ -162,9 +193,8 @@ def create_chat_app(
                 return
             if assistant_parts:
                 store.add_message(session_id, role="assistant", content="".join(assistant_parts))
-            latest_run = SQLiteTraceStore(agent.trace_db_path).get_latest_run_for_agent(agent.name)
-            if latest_run:
-                yield _sse_event("trace", {"run_id": latest_run["id"]})
+            if trace_store and trace_store.started_run_id:
+                yield _sse_event("trace", {"run_id": trace_store.started_run_id})
             yield "data: [DONE]\n\n"
 
         return StreamingResponse(
@@ -177,6 +207,12 @@ def create_chat_app(
         )
 
     return app
+
+
+def _trace_store(agent: Agent) -> TraceStore:
+    if agent.trace_store is not None:
+        return agent.trace_store
+    return SQLiteTraceStore(agent.trace_db_path)
 
 
 def _messages_for_agent(agent: Agent, history: list[ChatMessage]) -> list[Message]:
@@ -196,9 +232,7 @@ def _sse_event(event: str, value: object) -> str:
 
 def _settings_from_agent(agent: Agent) -> ChatSettings:
     provider, model = (
-        agent.model.split(":", 1)
-        if ":" in agent.model
-        else ("openrouter", agent.model)
+        agent.model.split(":", 1) if ":" in agent.model else ("openrouter", agent.model)
     )
     supported = {"openrouter", "openai", "anthropic", "google", "local", "ollama"}
     if provider not in supported:
@@ -236,6 +270,16 @@ def _list_models(provider: str) -> list[ModelOption]:
 
 def _list_openrouter_models() -> list[ModelOption]:
     fallback = [
+        ModelOption(id="openai/gpt-5.6-sol", name="GPT-5.6 Sol via OpenRouter"),
+        ModelOption(id="openai/gpt-5.6-terra", name="GPT-5.6 Terra via OpenRouter"),
+        ModelOption(id="openai/gpt-5.6-luna", name="GPT-5.6 Luna via OpenRouter"),
+        ModelOption(id="anthropic/claude-fable-5", name="Claude Fable 5 via OpenRouter"),
+        ModelOption(id="anthropic/claude-opus-5", name="Claude Opus 5 via OpenRouter"),
+        ModelOption(id="anthropic/claude-sonnet-5", name="Claude Sonnet 5 via OpenRouter"),
+        ModelOption(
+            id="anthropic/claude-haiku-4.5",
+            name="Claude Haiku 4.5 via OpenRouter",
+        ),
         ModelOption(id="openai/gpt-4.1-mini", name="GPT-4.1 Mini via OpenRouter"),
         ModelOption(id="anthropic/claude-sonnet-4.5", name="Claude Sonnet via OpenRouter"),
         ModelOption(id="google/gemini-2.5-flash", name="Gemini 2.5 Flash via OpenRouter"),
@@ -279,6 +323,9 @@ def _list_openai_models() -> list[ModelOption]:
         except Exception:
             pass
     return [
+        ModelOption(id="gpt-5.6-sol", name="GPT-5.6 Sol"),
+        ModelOption(id="gpt-5.6-terra", name="GPT-5.6 Terra"),
+        ModelOption(id="gpt-5.6-luna", name="GPT-5.6 Luna"),
         ModelOption(id="gpt-4.1-mini", name="GPT-4.1 Mini"),
         ModelOption(id="gpt-4o-mini", name="GPT-4o Mini"),
     ]
@@ -286,6 +333,10 @@ def _list_openai_models() -> list[ModelOption]:
 
 def _list_anthropic_models() -> list[ModelOption]:
     fallback = [
+        ModelOption(id="claude-fable-5", name="Claude Fable 5"),
+        ModelOption(id="claude-opus-5", name="Claude Opus 5"),
+        ModelOption(id="claude-sonnet-5", name="Claude Sonnet 5"),
+        ModelOption(id="claude-haiku-4-5-20251001", name="Claude Haiku 4.5"),
         ModelOption(id="claude-sonnet-4-20250514", name="Claude Sonnet 4"),
         ModelOption(id="claude-opus-4-1-20250805", name="Claude Opus 4.1"),
         ModelOption(id="claude-3-5-haiku-20241022", name="Claude Haiku 3.5"),
@@ -300,6 +351,7 @@ def _list_anthropic_models() -> list[ModelOption]:
                 "x-api-key": api_key,
                 "anthropic-version": "2023-06-01",
             },
+            params={"limit": 1000},
             timeout=5,
         )
         response.raise_for_status()

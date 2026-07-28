@@ -1,5 +1,5 @@
 from clearagent import create_agent, tool
-from clearagent.providers.base import FakeProvider, ProviderResponse, ToolCall
+from clearagent.providers import FakeProvider, ProviderResponse, ToolCall
 
 
 @tool
@@ -16,7 +16,9 @@ agent = create_agent(
     provider=FakeProvider(
         [
             ProviderResponse.fake_tool_call(
-                ToolCall(id="call_lookup_order", name="lookup_order", arguments={"order_id": "A123"})
+                ToolCall(
+                    id="call_lookup_order", name="lookup_order", arguments={"order_id": "A123"}
+                )
             ),
             ProviderResponse.fake_text("Order A123 has shipped and arrives Friday."),
         ]

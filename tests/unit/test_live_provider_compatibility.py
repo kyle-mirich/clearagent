@@ -1,6 +1,4 @@
 import json
-import subprocess
-import sys
 
 import httpx
 import pytest
@@ -16,6 +14,7 @@ from scripts.live_provider_compatibility import (
     PROVIDERS,
     ROOT,
     live_tests_enabled,
+    main,
     run_provider,
     sanitize,
 )
@@ -26,24 +25,17 @@ FIXTURE_DIR = ROOT / "tests" / "fixtures" / "live_provider_recordings"
 
 def _recordings():
     return [
-        pytest.param(spec, FIXTURE_DIR / f"{spec.name}.json", id=spec.name)
-        for spec in PROVIDERS
+        pytest.param(spec, FIXTURE_DIR / f"{spec.name}.json", id=spec.name) for spec in PROVIDERS
     ]
 
 
-def test_live_command_requires_explicit_opt_in(monkeypatch):
+def test_live_command_requires_explicit_opt_in(monkeypatch, capsys):
     monkeypatch.delenv("CLEARAGENT_LIVE_TESTS", raising=False)
 
-    completed = subprocess.run(
-        [sys.executable, "scripts/live_provider_compatibility.py"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    exit_code = main([])
 
-    assert completed.returncode == 2
-    assert "Refusing to make provider requests" in completed.stderr
+    assert exit_code == 2
+    assert "Refusing to make provider requests" in capsys.readouterr().err
     assert live_tests_enabled() is False
 
 

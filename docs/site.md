@@ -6,8 +6,9 @@ maintainers.
 
 ## Start Here
 
-- [Installation](install.md) - install ClearAgent as a dependency and complete
-  the external-project agent, trace, and eval path without an API key.
+- [Installation](install.md) - use the canonical copy-paste walkthrough to
+  install ClearAgent as a dependency and complete the external-project agent,
+  trace, and eval path without an API key.
 - [Getting Started](getting-started.md) - understand the first traced-eval loop,
   then configure a live provider or a repository checkout.
 - [Product Scope](product-scope.md) - the public-library boundary and the
@@ -49,14 +50,6 @@ maintainers.
 - [Architecture](architecture.md) - the runtime flow and trace persistence
   invariant.
 
-Project background:
-
-- [Planning Artifacts](planning/index.md) - historical product and
-  implementation plans used while building the project.
-
-Planning artifacts can describe desired or future behavior. Use
-[Reference](reference.md) for current implemented commands and APIs.
-
 ## Contributing
 
 - [Documentation Guide](contributing-docs.md) - how agents and contributors
@@ -73,3 +66,5 @@ Planning artifacts can describe desired or future behavior. Use
 
 Every public behavior change should include a docs decision: update an existing
 page, add a new page and link it here, or explicitly note why no docs changed.
+The documentation checker validates local files, heading anchors, and that each
+page under `docs/` appears in this index.

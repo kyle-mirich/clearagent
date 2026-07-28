@@ -182,6 +182,62 @@ def test_agent_aggregates_usage_across_tool_turns(tmp_path):
     assert run["total_cost_usd"] == pytest.approx(0.03)
 
 
+@pytest.mark.parametrize(
+    ("first_cost", "second_cost"),
+    [(0.01, None), (None, 0.02)],
+)
+def test_agent_does_not_report_partial_cost_as_an_exact_total(tmp_path, first_cost, second_cost):
+    first = ProviderResponse.fake_tool_call(
+        ToolCall(id="call_1", name="lookup_order", arguments={"order_id": "A123"})
+    )
+    first.usage = Usage(prompt_tokens=10, completion_tokens=2, total_tokens=12, cost=first_cost)
+    second = ProviderResponse.fake_text("Done")
+    second.usage = Usage(
+        prompt_tokens=20,
+        completion_tokens=3,
+        total_tokens=23,
+        cost=second_cost,
+    )
+    db_path = tmp_path / "traces.sqlite"
+    agent = create_agent(
+        name="support",
+        model="openai:gpt-4.1-mini",
+        tools=[lookup_order],
+        provider=FakeProvider([first, second]),
+        trace_db_path=db_path,
+    )
+
+    result = agent.run("Look it up")
+    run = SQLiteTraceStore(db_path).get_run(result.run_id)
+
+    assert result.usage.total_tokens == 35
+    assert result.cost_usd is None
+    assert run["total_cost_usd"] is None
+
+
+def test_closing_stream_finalizes_trace_rows_as_error(tmp_path):
+    db_path = tmp_path / "traces.sqlite"
+    agent = create_agent(
+        name="support",
+        model="openai:gpt-4.1-mini",
+        provider=FakeProvider([ProviderResponse.fake_text("first chunk")]),
+        trace_db_path=db_path,
+    )
+    stream = agent.stream_text("hello")
+
+    assert next(stream) == "first chunk"
+    stream.close()
+
+    store = SQLiteTraceStore(db_path)
+    run = store.list_runs()[0]
+    turns = store.get_turns(run["id"])
+    model_calls = store.list_model_calls(run["id"])
+    assert run["status"] == "error"
+    assert turns[0]["status"] == "error"
+    assert model_calls[0]["status"] == "error"
+    assert "stream consumer closed" in run["metadata_json"]
+
+
 def test_request_build_failure_finalizes_trace(tmp_path):
     class BrokenBuildProvider(FakeProvider):
         def build_request(self, **kwargs):

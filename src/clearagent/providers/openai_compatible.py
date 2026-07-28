@@ -75,7 +75,9 @@ class OpenAICompatibleProvider:
         return {"authorization": f"Bearer {self.api_key}"} if self.api_key else {}
 
     def complete(self, request: ProviderRequest) -> ProviderResponse:
-        headers = _fresh_authorization_headers(request.headers_snapshot, self.auth_headers_snapshot())
+        headers = _fresh_authorization_headers(
+            request.headers_snapshot, self.auth_headers_snapshot()
+        )
         try:
             response = self.client.post(request.endpoint or "", json=request.body, headers=headers)
         except httpx.HTTPError as exc:
@@ -84,11 +86,15 @@ class OpenAICompatibleProvider:
         return _parse_openai_response(request, response)
 
     def stream_text(self, request: ProviderRequest):
-        headers = _fresh_authorization_headers(request.headers_snapshot, self.auth_headers_snapshot())
+        headers = _fresh_authorization_headers(
+            request.headers_snapshot, self.auth_headers_snapshot()
+        )
         body = dict(request.body)
         body["stream"] = True
         try:
-            with self.client.stream("POST", request.endpoint or "", json=body, headers=headers) as response:
+            with self.client.stream(
+                "POST", request.endpoint or "", json=body, headers=headers
+            ) as response:
                 raise_for_status(request, response)
                 for line in response.iter_lines():
                     if not line:
@@ -101,7 +107,11 @@ class OpenAICompatibleProvider:
                     try:
                         data = json.loads(payload)
                     except json.JSONDecodeError as exc:
-                        raise provider_error(request, f"stream response parse failed: {exc}") from exc
+                        raise provider_error(
+                            request, f"stream response parse failed: {exc}"
+                        ) from exc
+                    if not isinstance(data, dict):
+                        raise provider_error(request, "stream response must contain JSON objects")
                     if error := data.get("error"):
                         message = error.get("message") if isinstance(error, dict) else str(error)
                         raise provider_error(request, f"stream failed: {message}")

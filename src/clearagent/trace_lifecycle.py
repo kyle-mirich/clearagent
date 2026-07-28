@@ -35,7 +35,7 @@ class TraceLifecycle:
         response: ProviderResponse | None = None,
         error: dict[str, Any] | None = None,
     ) -> None:
-        if self.store and model_call_id:
+        if self.store is not None and model_call_id:
             self.store.save_model_response(
                 model_call_id=model_call_id,
                 response=response,
@@ -52,7 +52,7 @@ class TraceLifecycle:
         error: dict[str, Any] | None = None,
         turn_started: float | None = None,
     ) -> None:
-        if self.store and turn_id:
+        if self.store is not None and turn_id:
             self.store.end_turn(
                 turn_id=turn_id,
                 output_messages=output_messages,
@@ -71,7 +71,7 @@ class TraceLifecycle:
         end_run: bool = True,
         usage: Usage | None = None,
     ) -> None:
-        if self.store and self.run_id and self.own_run and end_run:
+        if self.store is not None and self.run_id and self.own_run and end_run:
             self.store.end_run(
                 self.run_id,
                 final_output=final_output,
@@ -116,7 +116,7 @@ class TraceLifecycle:
         usage: Usage | None = None,
     ) -> dict[str, str]:
         error = error_payload(exc)
-        if self.store and tool_call_id:
+        if self.store is not None and tool_call_id:
             self.store.end_tool_call(tool_call_id, status="error", error=error)
         self.end_turn(
             turn_id,

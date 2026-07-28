@@ -10,6 +10,7 @@ from jsonschema import validate
 from clearagent.messages import Message, dump_messages, normalize_messages
 from clearagent.providers.base import (
     Provider,
+    ProviderRequest,
     ProviderResponse,
     ResponseFormat,
     ResponseFormatInput,
@@ -20,9 +21,10 @@ from clearagent.providers.model_uri import parse_model_uri
 from clearagent.serialization import json_safe, stringify
 from clearagent.storage.sqlite import DEFAULT_TRACE_DB, SQLiteTraceStore
 from clearagent.storage.protocol import TraceStore
+from clearagent.storage.redaction import redact
 from clearagent.trace_lifecycle import TraceLifecycle, latency_ms
 from clearagent.tool import tool_name, validate_tool_arguments
-from clearagent.types import RunResult
+from clearagent.types import ExecutedToolCall, RunResult
 
 
 class MaxTurnsExceeded(RuntimeError):
@@ -46,7 +48,7 @@ class Agent:
         trace_db_path: str | Path = DEFAULT_TRACE_DB,
         trace_store: TraceStore | None = None,
         max_turns: int = 8,
-        temperature: float | None = 0.0,
+        temperature: float | None = None,
         response_format: ResponseFormatInput = None,
     ):
         self.name = name
@@ -62,7 +64,9 @@ class Agent:
         self.response_format = normalize_response_format(response_format)
 
     def _store(self) -> TraceStore:
-        return self.trace_store or SQLiteTraceStore(self.trace_db_path)
+        if self.trace_store is not None:
+            return self.trace_store
+        return SQLiteTraceStore(self.trace_db_path)
 
     def run(
         self,
@@ -80,15 +84,19 @@ class Agent:
         """Run the bounded model/tool loop and return the final result."""
         started = time.monotonic()
         should_trace = self.trace if trace is None else trace
-        store = trace_store or (self._store() if should_trace else None)
+        store = (
+            trace_store if trace_store is not None else (self._store() if should_trace else None)
+        )
         own_run = run_id is None
         root_input = input if isinstance(input, str) else repr(input)
-        if store and run_id is None:
-            run_id = store.start_run(agent_name=self.name, root_input=root_input, graph_name=graph_name)
+        if store is not None and run_id is None:
+            run_id = store.start_run(
+                agent_name=self.name, root_input=root_input, graph_name=graph_name
+            )
         trace_lifecycle = TraceLifecycle(store, run_id, own_run=own_run, run_started=started)
 
         messages = normalize_messages(self.system_prompt, input)
-        all_tool_calls: list[dict[str, Any]] = []
+        all_tool_calls: list[ExecutedToolCall] = []
         usage = None
         node = node_name or self.name
 
@@ -96,7 +104,7 @@ class Agent:
             persisted_turn_index = turn_index_offset + turn_index
             turn_started = time.monotonic()
             turn_id = None
-            if store and run_id:
+            if store is not None and run_id:
                 turn_id = store.start_turn(
                     run_id=run_id,
                     turn_index=persisted_turn_index,
@@ -115,12 +123,15 @@ class Agent:
                     extra=extra or {},
                     response_format=self.response_format,
                 )
-                if store and run_id and turn_id:
+                if store is not None and run_id and turn_id:
                     model_call_id = store.save_model_request(
-                        run_id=run_id, turn_id=turn_id, request=request
+                        run_id=run_id,
+                        turn_id=turn_id,
+                        request=_redacted_request(request),
                     )
                 response = self.provider.complete(request)
-                _apply_structured_output(response, self.response_format)
+                if not response.tool_calls:
+                    _apply_structured_output(response, self.response_format)
             except Exception as exc:
                 trace_lifecycle.record_model_error(
                     model_call_id=model_call_id,
@@ -138,7 +149,7 @@ class Agent:
             if response.tool_calls:
                 for call in response.tool_calls:
                     tool_call_id = None
-                    if store and run_id and turn_id:
+                    if store is not None and run_id and turn_id:
                         tool_call_id = store.start_tool_call(
                             run_id=run_id,
                             turn_id=turn_id,
@@ -160,7 +171,7 @@ class Agent:
                         )
                         raise
                     safe_result = json_safe(result)
-                    if store and tool_call_id:
+                    if store is not None and tool_call_id:
                         store.end_tool_call(tool_call_id, result=safe_result)
                     all_tool_calls.append(
                         {"name": call.name, "arguments": call.arguments, "result": safe_result}
@@ -192,7 +203,8 @@ class Agent:
             return RunResult(
                 output=output,
                 run_id=run_id,
-                trace_db_path=self.trace_db_path if should_trace else None,
+                trace_db_path=_trace_db_path(store),
+                trace_store=store,
                 tool_calls=all_tool_calls,
                 usage=usage,
                 cost_usd=usage.cost_usd if usage else None,
@@ -237,18 +249,22 @@ class Agent:
 
         started = time.monotonic()
         should_trace = self.trace if trace is None else trace
-        store = trace_store or (self._store() if should_trace else None)
+        store = (
+            trace_store if trace_store is not None else (self._store() if should_trace else None)
+        )
         own_run = run_id is None
         root_input = input if isinstance(input, str) else repr(input)
-        if store and run_id is None:
-            run_id = store.start_run(agent_name=self.name, root_input=root_input, graph_name=graph_name)
+        if store is not None and run_id is None:
+            run_id = store.start_run(
+                agent_name=self.name, root_input=root_input, graph_name=graph_name
+            )
         trace_lifecycle = TraceLifecycle(store, run_id, own_run=own_run, run_started=started)
 
         messages = normalize_messages(self.system_prompt, input)
         node = node_name or self.name
         turn_started = time.monotonic()
         turn_id = None
-        if store and run_id:
+        if store is not None and run_id:
             turn_id = store.start_turn(
                 run_id=run_id,
                 turn_index=0,
@@ -268,9 +284,11 @@ class Agent:
                 extra=extra or {},
                 response_format=self.response_format,
             )
-            if store and run_id and turn_id:
+            if store is not None and run_id and turn_id:
                 model_call_id = store.save_model_request(
-                    run_id=run_id, turn_id=turn_id, request=request
+                    run_id=run_id,
+                    turn_id=turn_id,
+                    request=_redacted_request(request),
                 )
             for chunk in self.provider.stream_text(request):
                 chunks.append(chunk)
@@ -283,6 +301,15 @@ class Agent:
                 output_text=output,
             )
             _apply_structured_output(streamed_response, self.response_format)
+        except GeneratorExit:
+            trace_lifecycle.record_model_error(
+                model_call_id=model_call_id,
+                turn_id=turn_id,
+                messages=messages,
+                turn_started=turn_started,
+                exc=RuntimeError("stream consumer closed before completion"),
+            )
+            raise
         except Exception as exc:
             trace_lifecycle.record_model_error(
                 model_call_id=model_call_id,
@@ -326,7 +353,29 @@ def _assistant_message(response: ProviderResponse) -> Message:
             if call.provider_data:
                 serialized_call["provider_data"] = call.provider_data
             metadata["tool_calls"].append(serialized_call)
+        openai_output = response.raw.get("output")
+        if isinstance(openai_output, list):
+            metadata["openai_responses_output"] = openai_output
+        anthropic_content = response.raw.get("content")
+        if isinstance(anthropic_content, list):
+            metadata["anthropic_content"] = anthropic_content
     return Message(role="assistant", content=response.output_text, metadata=metadata)
+
+
+def _trace_db_path(store: TraceStore | None) -> Path | None:
+    if isinstance(store, SQLiteTraceStore):
+        return store.path
+    return None
+
+
+def _redacted_request(request: ProviderRequest) -> ProviderRequest:
+    """Copy a provider request with persistence-sensitive fields redacted."""
+    return request.model_copy(
+        update={
+            "body": redact(request.body),
+            "headers_snapshot": redact(request.headers_snapshot),
+        }
+    )
 
 
 def _request_model_name(model_uri: str) -> str:
@@ -354,7 +403,9 @@ def _apply_structured_output(
     try:
         parsed = json.loads(response.output_text)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"Invalid structured output JSON for {response_format.name!r}: {exc}") from exc
+        raise ValueError(
+            f"Invalid structured output JSON for {response_format.name!r}: {exc}"
+        ) from exc
     try:
         validate(parsed, response_format.json_schema)
     except JSONSchemaValidationError as exc:
@@ -369,10 +420,14 @@ def merge_usage(current: Usage | None, incoming: Usage | None) -> Usage | None:
         return current
     if current is None:
         return incoming.model_copy()
-    costs = [value for value in (current.cost_usd, incoming.cost_usd) if value is not None]
+    cost_usd = (
+        current.cost_usd + incoming.cost_usd
+        if current.cost_usd is not None and incoming.cost_usd is not None
+        else None
+    )
     return Usage(
         prompt_tokens=current.prompt_tokens + incoming.prompt_tokens,
         completion_tokens=current.completion_tokens + incoming.completion_tokens,
         total_tokens=current.total_tokens + incoming.total_tokens,
-        cost_usd=sum(costs) if costs else None,
+        cost_usd=cost_usd,
     )

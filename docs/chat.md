@@ -22,6 +22,10 @@ uv run clearagent chat examples.openrouter_chat.agent:agent
 - `GET /api/sessions` lists recent sessions.
 - `GET /api/sessions/{session_id}` returns one session.
 - `GET /api/sessions/{session_id}/messages` returns persisted messages.
+- `GET /api/models?provider=<provider>` returns the provider's current model
+  catalog when its API key is configured, with a bundled offline fallback. See
+  [Providers](providers.md#model-discovery-in-local-chat) for discovery and
+  fallback behavior.
 - `POST /api/sessions/{session_id}/messages` accepts `{"content": "..."}` and
   streams the assistant response as `text/event-stream` Server-Sent Events.
   Successful responses include a `trace` SSE event with the created `run_id`
@@ -42,6 +46,8 @@ bad caller cannot leave an unreadable row behind.
 
 New sessions default to the title `New chat`. Explicit session titles and
 first-user-message titles are whitespace-normalized before they are persisted.
+Session lists are ordered by most recent message activity, including when
+multiple updates occur within the same timestamp second.
 
 ## Shape
 
@@ -58,7 +64,8 @@ HTTP endpoints and read a streaming response body.
 ## Trace Viewer
 
 The packaged browser client has a **Traces** mode next to Chat. It is a local
-debugging surface for recent `.clearagent/traces.sqlite` runs:
+debugging surface for recent runs from the agent's `TraceStore`; that is
+`.clearagent/traces.sqlite` by default:
 
 - scan recent runs by status, agent, graph, input preview, and output preview
 - open an agent or graph run as an ordered turn timeline
@@ -67,8 +74,11 @@ debugging surface for recent `.clearagent/traces.sqlite` runs:
 - expand model request, response, usage, and tool JSON
 - copy run IDs, JSON panes, and the Markdown trace report
 
-The viewer is read-only. Missing run IDs return `404`, and malformed trace JSON
-is surfaced as a detected failure in the triage payload where possible.
+The viewer is read-only. Its trace list, triage report, and latest-run lookup all
+use the same injected store as the agent. Chat sessions and messages remain in
+the separate SQLite `ChatStore`. Missing run IDs return `404`, and malformed
+trace JSON is surfaced as a detected failure in the triage payload where
+possible.
 
 ## Safety Boundary
 

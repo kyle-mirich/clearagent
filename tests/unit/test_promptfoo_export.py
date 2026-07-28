@@ -31,7 +31,9 @@ def test_promptfoo_export_creates_yaml_and_target(tmp_path):
     assert config["tests"][0]["description"] == "safe answer"
     assert config["tests"][0]["vars"]["input"] == "hello"
     assert config["tests"][0]["assert"][0] == {"type": "contains", "value": "hi"}
-    assert "from examples.customer_support.agent import agent" in target_path.read_text(encoding="utf-8")
+    assert "from examples.customer_support.agent import agent" in target_path.read_text(
+        encoding="utf-8"
+    )
 
 
 def test_promptfoo_target_requires_module_object_agent_path(tmp_path):
@@ -43,7 +45,7 @@ def test_promptfoo_export_requires_module_object_agent_path(tmp_path):
     suite = EvalSuite(
         name="safety",
         type="output",
-        cases=[EvalCase(name="safe answer", input="hello", checks=[])],
+        cases=[EvalCase(name="safe answer", input="hello", checks=[{"contains": "hello"}])],
     )
 
     with pytest.raises(ValueError, match="module:object"):

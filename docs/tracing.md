@@ -23,6 +23,11 @@ uv run clearagent trace-report <run_id> --out report.md
 uv run clearagent trace-to-eval <run_id> --out generated.yaml
 ```
 
+Add `--json` to `trace list`, `trace show`, `trace turns`, or `diff` for stable
+machine-readable output. `request` already prints JSON. The standalone trace
+commands read SQLite selected by `--trace-db`; agent-backed eval and chat flows
+can instead use an injected `TraceStore`.
+
 `request` prints the saved request snapshot. `replay-request` exports the saved
 request snapshot. They do not rebuild a request from current code or call a
 provider.
@@ -30,6 +35,14 @@ provider.
 `replay` reruns the stored provider request with fresh credentials from the
 environment. `diff` reruns the request and compares output, finish reason, and
 usage against the stored response.
+
+Before adding fresh credentials, default replay verifies that a stored OpenAI,
+OpenRouter, Anthropic, or Google endpoint matches the selected provider's
+configured endpoint. A modified or noncanonical cloud endpoint is rejected
+without making an HTTP request. Python callers that intentionally use a custom
+cloud base URL must pass a provider configured with that same base URL. Stored
+OpenAI Chat Completions traces remain replayable through their recorded API
+shape even though new OpenAI runs use the Responses API.
 
 If a run or turn does not have a stored model request, or a stored request or
 response snapshot is malformed, these commands fail with a clear parameter
@@ -65,9 +78,10 @@ visible in order. Each turn includes user input, final output, status, latency,
 model calls, tool calls, collapsible request/response/usage JSON panes, and copy
 buttons for JSON, run IDs, and the Markdown report.
 
-The viewer is read-only and local-first. It uses the same
-`.clearagent/traces.sqlite` data as the trace CLI and does not upload traces or
-add external observability services.
+The viewer is read-only and local-first. By default it uses the same
+`.clearagent/traces.sqlite` data as the trace CLI. When an embedded agent has a
+custom `TraceStore`, its viewer reads that store instead. Neither path uploads
+traces or adds an external observability service.
 
 ## Related Docs
 

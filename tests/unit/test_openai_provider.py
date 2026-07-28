@@ -152,11 +152,11 @@ def test_stream_text_parses_responses_events():
         return httpx.Response(
             200,
             text=(
-                'event: response.output_text.delta\n'
+                "event: response.output_text.delta\n"
                 'data: {"type":"response.output_text.delta","delta":"Hello "}\n\n'
-                'event: response.output_text.delta\n'
+                "event: response.output_text.delta\n"
                 'data: {"type":"response.output_text.delta","delta":"world"}\n\n'
-                'event: response.completed\n'
+                "event: response.completed\n"
                 'data: {"type":"response.completed"}\n\n'
             ),
         )

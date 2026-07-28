@@ -39,8 +39,7 @@ def test_google_build_request_uses_generate_content_shape_tools_and_response_sch
 
     assert request.api_shape == "google_genai"
     assert request.endpoint == (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        "gemini-2.5-flash:generateContent"
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     )
     assert request.headers_snapshot["x-goog-api-key"] == "test-key"
     assert request.body["systemInstruction"] == {"parts": [{"text": "Classify support tickets."}]}
@@ -49,7 +48,9 @@ def test_google_build_request_uses_generate_content_shape_tools_and_response_sch
     ]
     assert request.body["tools"][0]["functionDeclarations"][0]["name"] == "lookup_order"
     assert request.body["generationConfig"]["responseMimeType"] == "application/json"
-    assert request.body["generationConfig"]["responseJsonSchema"] == Classification.model_json_schema()
+    assert (
+        request.body["generationConfig"]["responseJsonSchema"] == Classification.model_json_schema()
+    )
 
 
 def test_google_complete_parses_text_function_calls_and_usage():

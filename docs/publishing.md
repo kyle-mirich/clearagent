@@ -30,8 +30,11 @@ GitHub release until the maintainer explicitly approves the release.
 6. Run the full local gate:
 
 ```bash
-uv run bash scripts/check.sh
+./scripts/check.sh
 ```
+
+This gate already builds and inspects both distributions and runs fresh base-
+wheel and pytest-extra smoke tests outside the repository.
 
 ## Build Artifacts
 
@@ -49,20 +52,33 @@ ls dist/
 
 When package data changes, inspect the wheel. For example, the chat browser
 client should include `clearagent/chat/static/index.html`,
-`clearagent/chat/static/styles.css`, and `clearagent/chat/static/app.js`:
+`clearagent/chat/static/styles.css`, and `clearagent/chat/static/app.js`, and the
+typing marker should include `clearagent/py.typed`:
 
 ```bash
 uv run python -m zipfile -l dist/clearagent-<version>-py3-none-any.whl
 ```
 
-Run a credential-free metadata and package check against both artifacts:
+Run a credential-free metadata check against both artifacts:
 
 ```bash
-uvx --from twine twine check dist/*
+uv run python -m twine check dist/*
 ```
 
-This is the required local artifact verification. It does not contact the
-upload endpoint or require PyPI credentials.
+For the authoritative repeatable artifact check, use:
+
+```bash
+uv run python scripts/check_distribution.py
+```
+
+That command builds into a fresh temporary directory, rejects missing or extra
+artifacts, requires the complete source-package inventory in both archives,
+validates every wheel `RECORD` hash and size, runs Twine, and performs the
+external installation checks. The artifact build and authoritative installation
+smokes are forced offline. Clean CI runners first perform one explicit dependency
+prefetch from the built wheel (including the pytest extra); local runs reuse the
+cache populated by the locked development environment. The gate does not contact
+an upload endpoint or require PyPI credentials.
 
 ## Fresh-Environment Smoke Test
 
@@ -74,7 +90,8 @@ CLEARAGENT_WHEEL="$(pwd)/dist/clearagent-0.1.0-py3-none-any.whl"
 CLEARAGENT_SMOKE_DIR="$(mktemp -d)"
 uv venv --python 3.14 "$CLEARAGENT_SMOKE_DIR/.venv"
 uv pip install --python "$CLEARAGENT_SMOKE_DIR/.venv/bin/python" "$CLEARAGENT_WHEEL"
-"$CLEARAGENT_SMOKE_DIR/.venv/bin/python" -c "from clearagent import create_agent, tool; print(create_agent, tool)"
+"$CLEARAGENT_SMOKE_DIR/.venv/bin/python" -c "from clearagent import create_agent, tool; from clearagent.providers import FakeProvider; print(create_agent, tool, FakeProvider)"
+"$CLEARAGENT_SMOKE_DIR/.venv/bin/clearagent" --version
 "$CLEARAGENT_SMOKE_DIR/.venv/bin/clearagent" --help
 ```
 
@@ -86,21 +103,14 @@ that installed wheel and confirm it writes a SQLite trace and passes its eval.
 Maintainers can also ask `uv` to check the files it would select for an upload:
 
 ```bash
-uv publish --dry-run
+UV_PUBLISH_TOKEN=clearagent-dry-run-placeholder uv publish --dry-run
 ```
 
-The command does not upload the files, but it still performs publishing
-authentication. Outside a trusted-publishing environment, `uv` tries to obtain
-an OIDC token when no token, username/password, or keyring credentials are
-available. It can check the artifacts and then report a trusted-publishing
-failure; depending on the installed `uv` version, that authentication failure
-may also produce a nonzero exit status. Therefore, do not treat
-`uv publish --dry-run` as a required passing local gate without credentials.
-
-Use the credential-free `twine check` command above for a local gate that can
-pass without publishing access. Preserve `uv publish --dry-run` as an optional
-maintainer check when credentials are configured or trusted publishing is
-available.
+The command does not upload files. The non-secret placeholder satisfies `uv`'s
+authentication selection without exposing a real credential or attempting OIDC
+discovery; it must only be used with `--dry-run`. The verified dry run selects
+the exact sdist and wheel. The credential-free `twine check` and distribution
+gate above remain the required artifact checks.
 
 ## Publish
 
@@ -124,7 +134,8 @@ From a fresh project, install and smoke test the release:
 uv init --bare --python 3.14 clearagent-smoke
 cd clearagent-smoke
 uv add clearagent
-uv run python -c "from clearagent import create_agent, tool; print(create_agent); print(tool)"
+uv run python -c "from clearagent import create_agent, tool; from clearagent.providers import FakeProvider; print(create_agent, tool, FakeProvider)"
+uv run clearagent --version
 uv run clearagent --help
 ```
 

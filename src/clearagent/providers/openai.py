@@ -87,9 +87,7 @@ class OpenAIResponsesProvider:
             response = self.client.post(
                 request.endpoint or "",
                 json=request.body,
-                headers=_fresh_auth_headers(
-                    request.headers_snapshot, self.auth_headers_snapshot()
-                ),
+                headers=_fresh_auth_headers(request.headers_snapshot, self.auth_headers_snapshot()),
             )
         except httpx.HTTPError as exc:
             raise provider_error(request, f"request failed: {exc}") from exc
@@ -110,9 +108,7 @@ class OpenAIResponsesProvider:
                 "POST",
                 request.endpoint or "",
                 json=body,
-                headers=_fresh_auth_headers(
-                    request.headers_snapshot, self.auth_headers_snapshot()
-                ),
+                headers=_fresh_auth_headers(request.headers_snapshot, self.auth_headers_snapshot()),
             ) as response:
                 raise_for_status(request, response)
                 for line in response.iter_lines():
@@ -126,7 +122,9 @@ class OpenAIResponsesProvider:
                     try:
                         data = json.loads(payload)
                     except json.JSONDecodeError as exc:
-                        raise provider_error(request, f"stream response parse failed: {exc}") from exc
+                        raise provider_error(
+                            request, f"stream response parse failed: {exc}"
+                        ) from exc
                     if not isinstance(data, dict):
                         raise provider_error(request, "stream response must contain JSON objects")
                     event_type = data.get("type")
@@ -159,6 +157,10 @@ def _responses_input(messages: list[Message]) -> list[dict[str, Any]]:
             )
             continue
         if message.role == "assistant" and message.metadata.get("tool_calls"):
+            preserved_output = message.metadata.get("openai_responses_output")
+            if isinstance(preserved_output, list):
+                items.extend(preserved_output)
+                continue
             if message.content:
                 items.append({"role": "assistant", "content": message.content})
             for call in message.metadata["tool_calls"]:

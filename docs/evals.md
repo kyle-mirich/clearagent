@@ -13,12 +13,13 @@ cases:
       - not_contains: cancelled
 ```
 
-Every suite must include a string `name` and a list of `cases`. Each case must
-include string `name` and `input` fields, and case names must be unique within
-the suite. Optional `defaults` and `matrix` sections must be mappings, and
-matrix `models` and `temperatures` values must be lists when present.
-ClearAgent validates these fields before running the agent so malformed suites
-fail without making provider calls.
+Every suite must include a string `name` and one or more `cases`. Each case must
+include string `name` and `input` fields plus one or more deterministic
+`checks`, and case names must be unique within the suite. Optional `defaults`
+and `matrix` sections must be mappings, and matrix `models` and `temperatures`
+values must be lists when present. ClearAgent rejects empty suites and cases
+without checks before running the agent, so a vacuous eval cannot pass or make
+a provider call.
 
 Run a suite:
 
@@ -27,7 +28,12 @@ uv run clearagent eval examples.customer_support.agent:agent examples/customer_s
 ```
 
 Each eval case runs the agent, writes a normal trace run, evaluates checks
-against the final output or trace data, and records the eval result in SQLite.
+against the final output or trace data, and records the eval result through the
+agent's `TraceStore`. SQLite is the default; an injected store is used for the
+entire eval flow.
+
+Add `--json` to emit the complete `EvalReport` for automation. The command
+still exits 1 when any case fails, after writing the JSON report.
 
 ## Trace-to-Eval Generation
 
@@ -66,7 +72,8 @@ token usage is available, the check fails as unavailable instead of assuming a
 zero-dollar run.
 
 Invalid `regex` patterns fail that check with an error message instead of
-aborting the suite.
+aborting the suite. The `regex` operand must be a YAML string; `refuses` and
+`structured_output` operands must be YAML booleans.
 
 `contains_any`, `expected_tools`, and `forbidden_tools` expect YAML lists. If a
 suite passes a scalar value instead, ClearAgent fails that check with a clear
@@ -74,6 +81,8 @@ validation message.
 
 Malformed operands for other checks likewise fail that case without aborting
 the suite, and suite records are finalized even when setup fails unexpectedly.
+Trace-aware checks fail explicitly when the result has no trace or its recorded
+run cannot be found; absence of trace evidence never counts as a passing check.
 
 Eval suites can also define a model and temperature matrix:
 
@@ -95,7 +104,9 @@ cases:
 ```
 
 If `models` is omitted, ClearAgent runs the temperature variants against the
-agent's current model.
+agent's current model and current provider. This preserves custom and fake
+providers. Python callers can pass an explicit `provider_factory` to
+`EvalRunner` when they want a new provider for every matrix variant.
 
 For quick prompt, model, or temperature experiments, use `iterate`:
 
@@ -118,16 +129,27 @@ Trace-aware checks include:
 - `not_called_tool`
 - `structured_output`
 
+They read from the exact store retained on the case's `RunResult`, so they work
+with custom `TraceStore` implementations without reopening SQLite.
+
 ## Baselines
 
 Suite runs can be saved as baselines and compared later:
 
 ```bash
 uv run clearagent baseline save <suite_run_id> --name v1
-uv run clearagent baseline compare v1 <suite_run_id>
+uv run clearagent baseline compare v1 <suite_run_id> --json
 ```
 
 Baseline comparison reports regressions and improvements by eval case name.
+The JSON form also includes unchanged passes and failures. A successful
+comparison exits zero even when its `regressions` list is non-empty, so CI
+policy should inspect that field.
+For matrix runs, ClearAgent persists each result's canonical variant data and
+adds it to the reported identity, for example
+`shipped order [variant={"model":"openai:gpt-4.1-mini","temperature":0.2}]`.
+This keeps results for the same case distinct across models and temperatures;
+non-matrix case names remain unchanged.
 Missing suite runs, comparison runs, baseline names, or malformed stored
 baseline records fail with a clear parameter error.
 Baseline comparison also requires the saved baseline and current suite run to

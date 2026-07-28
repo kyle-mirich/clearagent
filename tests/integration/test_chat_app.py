@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 from fastapi.testclient import TestClient
@@ -22,6 +24,7 @@ def test_chat_app_streams_response_and_persists_history(tmp_path):
         model="openrouter:deepseek/deepseek-v4-flash",
         system_prompt="You are concise.",
         provider=FakeProvider([ProviderResponse.fake_text("Hello **there**.")]),
+        trace_db_path=tmp_path / "traces.sqlite",
     )
     app = create_chat_app(agent, chat_db_path=tmp_path / "chat.sqlite")
     client = TestClient(app)
@@ -54,6 +57,7 @@ def test_chat_app_streams_provider_errors_as_sse_error_events(tmp_path):
         model="openrouter:deepseek/deepseek-v4-flash",
         system_prompt="You are concise.",
         provider=FakeProvider([RuntimeError("upstream rejected the request")]),
+        trace_db_path=tmp_path / "traces.sqlite",
     )
     app = create_chat_app(agent, chat_db_path=tmp_path / "chat.sqlite")
     client = TestClient(app)
@@ -66,11 +70,72 @@ def test_chat_app_streams_provider_errors_as_sse_error_events(tmp_path):
 
     assert stream_response.status_code == 200
     assert stream_response.text == (
-        'event: error\n'
-        'data: {"message": "Request failed: upstream rejected the request"}\n\n'
+        'event: error\ndata: {"message": "Request failed: upstream rejected the request"}\n\n'
     )
     history = client.get(f"/api/sessions/{session_id}/messages").json()
     assert [message["role"] for message in history] == ["user"]
+
+
+def test_chat_app_does_not_emit_a_stale_trace_when_tracing_is_disabled(tmp_path):
+    db_path = tmp_path / "traces.sqlite"
+    trace_store = SQLiteTraceStore(db_path)
+    stale_run_id = trace_store.start_run(agent_name="chat_agent", root_input="old request")
+    trace_store.end_run(stale_run_id, final_output="old response")
+    agent = create_agent(
+        name="chat_agent",
+        model="openrouter:deepseek/deepseek-v4-flash",
+        provider=FakeProvider([ProviderResponse.fake_text("Fresh response.")]),
+        trace=False,
+        trace_db_path=db_path,
+    )
+    client = TestClient(create_chat_app(agent, chat_db_path=tmp_path / "chat.sqlite"))
+    session_id = client.post("/api/sessions").json()["id"]
+
+    response = client.post(
+        f"/api/sessions/{session_id}/messages",
+        json={"content": "New untraced request"},
+    )
+
+    assert response.status_code == 200
+    assert "event: trace" not in response.text
+    assert [run["id"] for run in trace_store.list_runs()] == [stale_run_id]
+
+
+def test_chat_app_emits_the_trace_owned_by_its_stream_when_another_run_competes(tmp_path):
+    db_path = tmp_path / "traces.sqlite"
+    trace_store = SQLiteTraceStore(db_path)
+
+    class CompetingRunProvider(FakeProvider):
+        def stream_text(self, request):
+            self.completed_requests.append(request)
+            yield "Owned response."
+            competing_run_id = trace_store.start_run(
+                agent_name="chat_agent",
+                root_input="competing request",
+            )
+            trace_store.end_run(competing_run_id, final_output="competing response")
+
+    agent = create_agent(
+        name="chat_agent",
+        model="openrouter:deepseek/deepseek-v4-flash",
+        provider=CompetingRunProvider(),
+        trace_db_path=db_path,
+    )
+    client = TestClient(create_chat_app(agent, chat_db_path=tmp_path / "chat.sqlite"))
+    session_id = client.post("/api/sessions").json()["id"]
+
+    response = client.post(
+        f"/api/sessions/{session_id}/messages",
+        json={"content": "My request"},
+    )
+
+    trace_payload = response.text.split("event: trace\ndata: ", 1)[1].split("\n\n", 1)[0]
+    emitted_run_id = json.loads(trace_payload)["run_id"]
+    runs = trace_store.list_runs()
+    owned_run = next(run for run in runs if "My request" in run["root_input"])
+    competing_run = next(run for run in runs if run["root_input"] == "competing request")
+    assert emitted_run_id == owned_run["id"]
+    assert emitted_run_id != competing_run["id"]
 
 
 def test_chat_app_uses_agent_runtime_for_tools_and_tracing(tmp_path):
@@ -306,16 +371,25 @@ def test_chat_app_does_not_expose_builder_endpoints(tmp_path):
     client = TestClient(app)
 
     assert client.get("/api/builder/flow").status_code == 404
-    assert client.post(
-        "/api/builder/plan",
-        json={"instruction": "Build a support agent."},
-    ).status_code == 404
+    assert (
+        client.post(
+            "/api/builder/plan",
+            json={"instruction": "Build a support agent."},
+        ).status_code
+        == 404
+    )
 
 
 def test_chat_app_exposes_agents_settings_and_models(tmp_path, monkeypatch):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr(
+        "clearagent.chat.app.httpx.get",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("model discovery should not run without an API key")
+        ),
+    )
     agent = create_agent(
         name="chat_agent",
         model="openrouter:deepseek/deepseek-v4-flash",
@@ -331,6 +405,7 @@ def test_chat_app_exposes_agents_settings_and_models(tmp_path, monkeypatch):
     agents = client.get("/api/agents").json()
     settings = client.get("/api/settings").json()
     models = client.get("/api/models", params={"provider": "openrouter"}).json()
+    openai_models = client.get("/api/models", params={"provider": "openai"}).json()
     anthropic_models = client.get("/api/models", params={"provider": "anthropic"}).json()
 
     assert agents == [{"name": "chat_agent"}]
@@ -338,8 +413,25 @@ def test_chat_app_exposes_agents_settings_and_models(tmp_path, monkeypatch):
     assert settings["model"] == "deepseek/deepseek-v4-flash"
     assert settings["temperature"] == 0.0
     assert settings["thinking"] == "off"
-    assert "openai/gpt-4.1-mini" in [model["id"] for model in models]
-    assert "claude-sonnet-4-20250514" in [model["id"] for model in anthropic_models]
+    model_ids = {model["id"] for model in models}
+    openai_model_ids = {model["id"] for model in openai_models}
+    anthropic_model_ids = {model["id"] for model in anthropic_models}
+    assert {
+        "openai/gpt-5.6-sol",
+        "openai/gpt-5.6-terra",
+        "openai/gpt-5.6-luna",
+        "anthropic/claude-fable-5",
+        "anthropic/claude-opus-5",
+        "anthropic/claude-sonnet-5",
+        "anthropic/claude-haiku-4.5",
+    } <= model_ids
+    assert {"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} <= openai_model_ids
+    assert {
+        "claude-fable-5",
+        "claude-opus-5",
+        "claude-sonnet-5",
+        "claude-haiku-4-5-20251001",
+    } <= anthropic_model_ids
 
     updated = client.put(
         "/api/settings",
@@ -458,7 +550,7 @@ def test_chat_app_rejects_invalid_settings_without_mutating_runtime_state(tmp_pa
         "thinking": "off",
     }
     assert agent.model == "openrouter:deepseek/deepseek-v4-flash"
-    assert agent.temperature == 0.0
+    assert agent.temperature is None
 
 
 def test_chat_settings_preserve_native_google_provider(tmp_path):
@@ -482,6 +574,7 @@ def test_chat_app_health_favicon_and_missing_resources(tmp_path):
         name="chat_agent",
         model="openai:gpt-4.1-mini",
         provider=FakeProvider(),
+        trace_db_path=tmp_path / "traces.sqlite",
     )
     client = TestClient(create_chat_app(agent, chat_db_path=tmp_path / "chat.sqlite"))
 
@@ -489,9 +582,9 @@ def test_chat_app_health_favicon_and_missing_resources(tmp_path):
     assert client.get("/favicon.ico").status_code == 204
     assert client.get("/api/sessions/missing").status_code == 404
     assert client.get("/api/sessions/missing/messages").status_code == 404
-    assert client.post(
-        "/api/sessions/missing/messages", json={"content": "Hello"}
-    ).status_code == 404
+    assert (
+        client.post("/api/sessions/missing/messages", json={"content": "Hello"}).status_code == 404
+    )
     assert client.get("/api/triage/runs/missing").status_code == 404
 
     session_id = client.post("/api/sessions").json()["id"]
@@ -551,6 +644,7 @@ def test_chat_model_listing_uses_remote_catalogs_when_keys_exist(tmp_path, monke
                 json={"data": [{"id": "gpt-test"}, "invalid"]},
             )
         assert kwargs["headers"]["x-api-key"] == "anthropic-key"
+        assert kwargs["params"] == {"limit": 1000}
         return httpx.Response(
             200,
             request=request,
@@ -587,6 +681,23 @@ def test_chat_model_listing_falls_back_when_remote_catalog_fails(tmp_path, monke
     )
     client = TestClient(create_chat_app(agent, chat_db_path=tmp_path / "chat.sqlite"))
 
-    assert client.get("/api/models?provider=openrouter").json()[0]["id"]
-    assert client.get("/api/models?provider=openai").json()[0]["id"] == "gpt-4.1-mini"
-    assert client.get("/api/models?provider=anthropic").json()[0]["id"].startswith("claude")
+    openrouter_ids = [model["id"] for model in client.get("/api/models?provider=openrouter").json()]
+    openai_ids = [model["id"] for model in client.get("/api/models?provider=openai").json()]
+    anthropic_ids = [model["id"] for model in client.get("/api/models?provider=anthropic").json()]
+
+    assert openrouter_ids[:7] == [
+        "openai/gpt-5.6-sol",
+        "openai/gpt-5.6-terra",
+        "openai/gpt-5.6-luna",
+        "anthropic/claude-fable-5",
+        "anthropic/claude-opus-5",
+        "anthropic/claude-sonnet-5",
+        "anthropic/claude-haiku-4.5",
+    ]
+    assert openai_ids[:3] == ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]
+    assert anthropic_ids[:4] == [
+        "claude-fable-5",
+        "claude-opus-5",
+        "claude-sonnet-5",
+        "claude-haiku-4-5-20251001",
+    ]

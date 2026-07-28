@@ -9,17 +9,46 @@ def lookup_order(order_id: str) -> dict:
 
 
 def test_create_agent_returns_agent_with_defaults(tmp_path):
+    provider = FakeProvider([ProviderResponse.fake_text("ok")])
     agent = create_agent(
         name="support",
         model="openai:gpt-4.1-mini",
-        provider=FakeProvider([ProviderResponse.fake_text("ok")]),
+        provider=provider,
         trace_db_path=tmp_path / "traces.sqlite",
     )
 
     assert isinstance(agent, Agent)
     assert agent.name == "support"
     assert agent.trace is True
+    assert agent.temperature is None
     assert agent.run("hello").output == "ok"
+    assert "temperature" not in provider.completed_requests[0].body
+
+
+def test_agent_and_create_agent_keep_explicit_temperature(tmp_path):
+    direct_provider = FakeProvider([ProviderResponse.fake_text("direct")])
+    direct = Agent(
+        name="direct",
+        model="fake:model",
+        provider=direct_provider,
+        trace=False,
+    )
+    configured_provider = FakeProvider([ProviderResponse.fake_text("configured")])
+    configured = create_agent(
+        name="configured",
+        model="fake:model",
+        provider=configured_provider,
+        temperature=0.25,
+        trace_db_path=tmp_path / "traces.sqlite",
+    )
+
+    direct.run("hello")
+    configured.run("hello")
+
+    assert direct.temperature is None
+    assert "temperature" not in direct_provider.completed_requests[0].body
+    assert configured.temperature == 0.25
+    assert configured_provider.completed_requests[0].body["temperature"] == 0.25
 
 
 def test_create_agent_accepts_tools(tmp_path):

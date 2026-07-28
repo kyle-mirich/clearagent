@@ -128,7 +128,7 @@ def test_anthropic_stream_raises_provider_error_event():
                 lambda request: httpx.Response(
                     200,
                     text=(
-                        'event: error\n'
+                        "event: error\n"
                         'data: {"type":"error","error":{"type":"overloaded_error",'
                         '"message":"Overloaded"}}\n\n'
                     ),

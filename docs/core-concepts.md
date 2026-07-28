@@ -25,9 +25,11 @@ agent = create_agent(
 ```
 
 `Agent.run(input)` returns a `RunResult` with the final output, trace run ID,
-trace database path, tool calls, token usage, latency, and optional structured
-output. Token usage is aggregated across every model/tool turn. Monetary cost
-remains `None` unless the provider reports it.
+the store used for tracing, an SQLite path when applicable, tool calls, typed
+token usage, latency, and optional structured output. Token usage is aggregated
+across every model/tool turn. Monetary cost remains `None` unless the provider
+reports it. The in-process store handle is excluded when the result is
+serialized.
 
 ## Tools
 
@@ -104,6 +106,10 @@ The important invariant is that the provider request is built and persisted
 before the model call. That makes `clearagent request` and
 `clearagent replay-request` read from stored request data instead of
 reconstructing a request later.
+
+SQLite at `.clearagent/traces.sqlite` is the default implementation. An
+injected `TraceStore` is carried through agents, graphs, evals, trace-aware
+checks, reports, and agent-backed chat trace inspection.
 
 Completed traces can also be exported as Markdown reports or promoted into
 starter eval suites:
