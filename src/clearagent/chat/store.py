@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 
 DEFAULT_CHAT_DB = Path(".clearagent/chat.sqlite")
-CHAT_SCHEMA_VERSION = 1
+CHAT_SCHEMA_VERSION = 2
 ChatRole = Literal["user", "assistant", "system"]
 CHAT_ROLES: set[str] = {"user", "assistant", "system"}
 
@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
   agent_name TEXT NOT NULL,
   title TEXT NOT NULL,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  activity_order INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS chat_messages (
   id TEXT PRIMARY KEY,
@@ -46,6 +47,7 @@ CHAT_COLUMNS = {
         "title": "TEXT NOT NULL DEFAULT 'New chat'",
         "created_at": "TEXT NOT NULL DEFAULT ''",
         "updated_at": "TEXT NOT NULL DEFAULT ''",
+        "activity_order": "INTEGER NOT NULL DEFAULT 0",
     },
     "chat_messages": {
         "id": "TEXT PRIMARY KEY",
@@ -119,8 +121,10 @@ class ChatStore:
         with self.connect() as db:
             db.execute(
                 """
-                INSERT INTO chat_sessions (id, agent_name, title, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO chat_sessions
+                (id, agent_name, title, created_at, updated_at, activity_order)
+                VALUES (?, ?, ?, ?, ?,
+                    (SELECT COALESCE(MAX(activity_order), 0) + 1 FROM chat_sessions))
                 """,
                 (session_id, agent_name, normalized_title, now, now),
             )
@@ -137,7 +141,10 @@ class ChatStore:
     def list_sessions(self) -> list[ChatSession]:
         with self.connect() as db:
             rows = db.execute(
-                "SELECT * FROM chat_sessions ORDER BY updated_at DESC, created_at DESC"
+                """
+                SELECT * FROM chat_sessions
+                ORDER BY activity_order DESC, updated_at DESC, created_at DESC, rowid DESC
+                """
             ).fetchall()
         return [ChatSession(**dict(row)) for row in rows]
 
@@ -160,7 +167,13 @@ class ChatStore:
                 (message_id, session_id, role, content, now),
             )
             db.execute(
-                "UPDATE chat_sessions SET updated_at=? WHERE id=?",
+                """
+                UPDATE chat_sessions
+                SET updated_at=?, activity_order=(
+                    SELECT COALESCE(MAX(activity_order), 0) + 1 FROM chat_sessions
+                )
+                WHERE id=?
+                """,
                 (now, session_id),
             )
             if role == "user":

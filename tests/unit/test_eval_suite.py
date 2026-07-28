@@ -1,6 +1,16 @@
 import pytest
 
-from clearagent.evals.suite import EvalSuite
+from clearagent.evals.suite import EvalCase, EvalSuite
+
+
+def test_programmatic_suite_requires_at_least_one_case():
+    with pytest.raises(ValueError, match="at least 1 item"):
+        EvalSuite(name="smoke", cases=[])
+
+
+def test_programmatic_case_requires_at_least_one_check():
+    with pytest.raises(ValueError, match="at least 1 item"):
+        EvalCase(name="shipped order", input="Where is A123?", checks=[])
 
 
 def test_valid_yaml_suite_parses(tmp_path):
@@ -59,6 +69,48 @@ def test_invalid_yaml_suite_raises_clear_error(tmp_path):
     suite_path.write_text("name: smoke\ncases: nope\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match="cases"):
+        EvalSuite.from_yaml(suite_path)
+
+
+def test_yaml_suite_rejects_zero_cases(tmp_path):
+    suite_path = tmp_path / "suite.yaml"
+    suite_path.write_text("name: smoke\ncases: []\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="cases.*at least one case"):
+        EvalSuite.from_yaml(suite_path)
+
+
+def test_yaml_suite_rejects_case_with_zero_checks(tmp_path):
+    suite_path = tmp_path / "suite.yaml"
+    suite_path.write_text(
+        """
+name: smoke
+cases:
+  - name: shipped order
+    input: Where is order A123?
+    checks: []
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="checks.*at least one check"):
+        EvalSuite.from_yaml(suite_path)
+
+
+def test_yaml_suite_rejects_non_list_checks(tmp_path):
+    suite_path = tmp_path / "suite.yaml"
+    suite_path.write_text(
+        """
+name: smoke
+cases:
+  - name: shipped order
+    input: Where is order A123?
+    checks: contains shipped
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="checks.*must be a list"):
         EvalSuite.from_yaml(suite_path)
 
 
@@ -170,8 +222,12 @@ name: smoke
 cases:
   - name: shipped order
     input: Where is order A123?
+    checks:
+      - contains: shipped
   - name: shipped order
     input: Where is order B456?
+    checks:
+      - contains: shipped
 """,
         encoding="utf-8",
     )

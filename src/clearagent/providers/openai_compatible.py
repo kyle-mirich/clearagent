@@ -110,6 +110,8 @@ class OpenAICompatibleProvider:
                         raise provider_error(
                             request, f"stream response parse failed: {exc}"
                         ) from exc
+                    if not isinstance(data, dict):
+                        raise provider_error(request, "stream response must contain JSON objects")
                     if error := data.get("error"):
                         message = error.get("message") if isinstance(error, dict) else str(error)
                         raise provider_error(request, f"stream failed: {message}")

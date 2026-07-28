@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
 
+from clearagent.storage.protocol import EvalCaseResultRecord
 from clearagent.storage.sqlite import SQLiteTraceStore, _now
 
 
@@ -19,7 +20,7 @@ class BaselineComparison:
 def save_baseline(store: SQLiteTraceStore, suite_run_id: str, *, name: str) -> str:
     suite = _get_suite_run(store, suite_run_id)
     results = store.list_eval_case_results(suite_run_id)
-    payload = {row["case_name"]: bool(row["passed"]) for row in results}
+    payload = _results_by_case_variant(results)
     baseline_id = f"baseline_{uuid4().hex[:12]}"
     with store.connect() as db:
         db.execute(
@@ -60,9 +61,7 @@ def compare_baseline(
     if baseline["model"] != suite["model"]:
         raise ValueError("Baseline model does not match the comparison suite run.")
     previous = _load_baseline_results(baseline)
-    current = {
-        row["case_name"]: bool(row["passed"]) for row in store.list_eval_case_results(suite_run_id)
-    }
+    current = _results_by_case_variant(store.list_eval_case_results(suite_run_id))
     if set(previous) != set(current):
         raise ValueError("Baseline case set does not match the comparison suite run.")
     unchanged_passes = []
@@ -126,3 +125,27 @@ def _load_baseline_results(baseline: dict[str, Any]) -> dict[str, bool]:
     ):
         raise ValueError(f"Malformed baseline results for {baseline['name']!r}.")
     return results
+
+
+def _results_by_case_variant(rows: list[EvalCaseResultRecord]) -> dict[str, bool]:
+    results: dict[str, bool] = {}
+    for row in rows:
+        case_key = _case_variant_key(row)
+        if case_key in results:
+            raise ValueError(f"Duplicate eval result for {case_key!r}.")
+        results[case_key] = bool(row["passed"])
+    return results
+
+
+def _case_variant_key(row: EvalCaseResultRecord) -> str:
+    raw_variant = row.get("variant_json", "{}")
+    try:
+        variant = json.loads(raw_variant)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Malformed eval variant for case {row['case_name']!r}.") from exc
+    if not isinstance(variant, dict):
+        raise ValueError(f"Malformed eval variant for case {row['case_name']!r}.")
+    if not variant:
+        return row["case_name"]
+    canonical_variant = json.dumps(variant, sort_keys=True, separators=(",", ":"))
+    return f"{row['case_name']} [variant={canonical_variant}]"

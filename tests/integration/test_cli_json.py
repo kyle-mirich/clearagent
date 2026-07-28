@@ -157,6 +157,58 @@ def test_eval_all_json_is_a_parseable_nonzero_error():
     }
 
 
+def test_iterate_stdout_remains_parseable_when_user_code_prints(tmp_path, monkeypatch):
+    module_path = tmp_path / "iterate_agent_module.py"
+    module_path.write_text(
+        """
+print("USER ITERATE IMPORT NOISE")
+
+from clearagent import create_agent
+from clearagent.providers import FakeProvider
+
+agent = create_agent(
+    name="support",
+    model="openai:gpt-4.1-mini",
+    provider=FakeProvider(),
+)
+""",
+        encoding="utf-8",
+    )
+    suite_path = tmp_path / "suite.yaml"
+    suite_path.write_text(
+        """
+name: smoke
+cases:
+  - name: delivery status
+    input: Where is A123?
+    checks:
+      - contains: shipped
+""",
+        encoding="utf-8",
+    )
+
+    def noisy_iterations(*args, **kwargs):
+        print("PROVIDER ITERATE NOISE")
+        return {"suite": "smoke", "total_variants": 0, "variants": []}
+
+    monkeypatch.setattr("clearagent.evals.iteration.run_eval_iterations", noisy_iterations)
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    result = CliRunner().invoke(
+        app,
+        ["iterate", "iterate_agent_module:agent", str(suite_path)],
+    )
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == {
+        "suite": "smoke",
+        "total_variants": 0,
+        "variants": [],
+    }
+    assert "USER ITERATE IMPORT NOISE" in result.stderr
+    assert "PROVIDER ITERATE NOISE" in result.stderr
+
+
 def test_diff_json_preserves_changed_exit_code(monkeypatch):
     comparison = ModelCallDiff(
         changed=True,

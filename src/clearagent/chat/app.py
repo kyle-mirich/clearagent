@@ -3,7 +3,7 @@ from importlib import resources
 import json
 import os
 from pathlib import Path
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException
@@ -37,6 +37,34 @@ class ChatSettings(BaseModel):
 class ModelOption(BaseModel):
     id: str
     name: str
+
+
+class _CapturingTraceStore:
+    """Record the run started by one stream while preserving an injected store."""
+
+    def __init__(self, store: TraceStore) -> None:
+        self.store = store
+        self.started_run_id: str | None = None
+
+    def start_run(
+        self,
+        *,
+        agent_name: str,
+        root_input: str,
+        graph_name: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> str:
+        run_id = self.store.start_run(
+            agent_name=agent_name,
+            root_input=root_input,
+            graph_name=graph_name,
+            metadata=metadata,
+        )
+        self.started_run_id = run_id
+        return run_id
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.store, name)
 
 
 def create_chat_app(
@@ -151,9 +179,11 @@ def create_chat_app(
         def stream() -> Iterator[str]:
             store.add_message(session_id, role="user", content=request.content)
             assistant_parts: list[str] = []
+            trace_store = _CapturingTraceStore(_trace_store(agent)) if agent.trace else None
             try:
                 for chunk in agent.stream_text(
                     _messages_for_agent(agent, store.list_messages(session_id)),
+                    trace_store=cast(TraceStore, trace_store),
                     extra=_request_extra(runtime_settings),
                 ):
                     assistant_parts.append(chunk)
@@ -163,9 +193,8 @@ def create_chat_app(
                 return
             if assistant_parts:
                 store.add_message(session_id, role="assistant", content="".join(assistant_parts))
-            latest_run = _trace_store(agent).get_latest_run_for_agent(agent.name)
-            if latest_run:
-                yield _sse_event("trace", {"run_id": latest_run["id"]})
+            if trace_store and trace_store.started_run_id:
+                yield _sse_event("trace", {"run_id": trace_store.started_run_id})
             yield "data: [DONE]\n\n"
 
         return StreamingResponse(

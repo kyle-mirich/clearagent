@@ -29,4 +29,4 @@ def test_run_eval_iterations_summarizes_variants(tmp_path):
     assert summary["variants"][0]["passed"] == 1
     assert summary["variants"][1]["failed"] == 1
     assert agent.model == "openai:gpt-4.1-mini"
-    assert agent.temperature == 0.0
+    assert agent.temperature is None

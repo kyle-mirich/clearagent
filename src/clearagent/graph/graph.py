@@ -19,6 +19,8 @@ class AgentGraph:
 
     def add_node(self, agent: Agent) -> "AgentGraph":
         """Register an agent node by its unique agent name."""
+        if agent.name in self.nodes:
+            raise ValueError(f"Graph already contains a node named {agent.name!r}.")
         self.nodes[agent.name] = agent
         return self
 

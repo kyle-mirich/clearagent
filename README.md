@@ -63,11 +63,82 @@ cd clearagent-quickstart
 uv add "clearagent @ git+https://github.com/kyle-mirich/clearagent.git"
 ```
 
-Continue with the canonical
-[First Traced Eval](https://github.com/kyle-mirich/clearagent/blob/main/docs/install.md#first-traced-eval).
-It supplies copy-pastable `agent.py` and `smoke.yaml` files, uses a deterministic
-provider with no API key, records a local trace, and runs the first eval. The
-same installation page covers live provider keys and optional extras.
+Create `agent.py` with a deterministic provider so the first run needs no API
+key:
+
+```python
+from clearagent import create_agent, tool
+from clearagent.providers import FakeProvider, ProviderResponse, ToolCall
+
+
+@tool
+def lookup_order(order_id: str) -> dict:
+    """Look up an order."""
+    return {"order_id": order_id, "status": "shipped", "eta": "Friday"}
+
+
+agent = create_agent(
+    name="support_agent",
+    model="openai:gpt-4.1-mini",
+    system_prompt="Help users with order status.",
+    tools=[lookup_order],
+    provider=FakeProvider(
+        [
+            ProviderResponse.fake_tool_call(
+                ToolCall(
+                    id="call_lookup_order",
+                    name="lookup_order",
+                    arguments={"order_id": "A123"},
+                )
+            ),
+            ProviderResponse.fake_text("Order A123 has shipped and arrives Friday."),
+        ]
+    ),
+)
+
+
+if __name__ == "__main__":
+    result = agent.run("Where is order A123?")
+    print(result.output)
+    print(f"trace: {result.trace_db_path}")
+    print(f"run_id: {result.run_id}")
+```
+
+Run the agent and locate its local SQLite trace:
+
+```bash
+uv run python agent.py
+test -f .clearagent/traces.sqlite
+uv run clearagent trace list
+```
+
+Create `smoke.yaml`:
+
+```yaml
+name: quickstart
+cases:
+  - name: shipped order
+    input: Where is order A123?
+    checks:
+      - contains: shipped
+      - contains: Friday
+```
+
+Run the eval. It imports a fresh `agent` object, executes the case, and records
+another local trace:
+
+```bash
+uv run clearagent eval agent:agent smoke.yaml
+```
+
+Copy a run ID from `trace list` to turn any observed trace into a starter eval:
+
+```bash
+uv run clearagent trace-to-eval <run_id> --out generated.yaml
+```
+
+See [Installation](https://github.com/kyle-mirich/clearagent/blob/main/docs/install.md)
+for live provider keys and optional extras.
 
 Release maintainers can follow the
 [publishing checklist](https://github.com/kyle-mirich/clearagent/blob/main/docs/publishing.md).
@@ -80,10 +151,12 @@ Release maintainers can follow the
   explicitly opt-in
 - `examples/` - runnable agents, graph flows, and eval suites
 - `docs/` - curated guides, architecture notes, and API/CLI reference
-- `scripts/check.sh` - the same 90%-coverage quality gate used by CI
+- `scripts/check.sh` - the same branch-coverage, browser, docs, type, and built-
+  distribution quality gate used by CI
 
-The paid provider compatibility suite is separate from that gate. Contributors
-can follow the bounded opt-in workflow in
+Pytest blocks external sockets by default. The paid provider compatibility
+suite is a separate, explicitly opted-in script outside that gate. Contributors
+can follow the bounded workflow in
 [Live Provider Compatibility](https://github.com/kyle-mirich/clearagent/blob/main/docs/live-provider-compatibility.md).
 
 ## Contributor Setup
@@ -93,12 +166,18 @@ depend on ClearAgent:
 
 ```bash
 uv sync --locked --all-extras --dev
+uv run playwright install chromium
 ./scripts/check.sh
 ```
 
-The gate runs deterministic non-live tests with at least 90% package line
-coverage, followed by Ruff, mypy, and documentation checks. CI runs the same
-gate on Python 3.14.
+The gate runs unit, integration, and real Chromium tests; requires at least 95%
+combined line/branch coverage, 90% per touched product file, and complete line
+and branch coverage for changed executable code. It rejects coverage or static-
+analysis suppressions, skipped/xfail/deselected outcomes, collection and config
+overrides, broad test networking, and static-client changes without a browser-
+test change; then runs Ruff lint and formatting, mypy, documentation links, and
+a fresh built-wheel smoke test. CI runs that gate on Python 3.14 and repeats
+distribution smoke tests on Ubuntu, macOS, and Windows.
 
 ## Documentation
 

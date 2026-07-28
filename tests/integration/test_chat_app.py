@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 from fastapi.testclient import TestClient
@@ -72,6 +74,68 @@ def test_chat_app_streams_provider_errors_as_sse_error_events(tmp_path):
     )
     history = client.get(f"/api/sessions/{session_id}/messages").json()
     assert [message["role"] for message in history] == ["user"]
+
+
+def test_chat_app_does_not_emit_a_stale_trace_when_tracing_is_disabled(tmp_path):
+    db_path = tmp_path / "traces.sqlite"
+    trace_store = SQLiteTraceStore(db_path)
+    stale_run_id = trace_store.start_run(agent_name="chat_agent", root_input="old request")
+    trace_store.end_run(stale_run_id, final_output="old response")
+    agent = create_agent(
+        name="chat_agent",
+        model="openrouter:deepseek/deepseek-v4-flash",
+        provider=FakeProvider([ProviderResponse.fake_text("Fresh response.")]),
+        trace=False,
+        trace_db_path=db_path,
+    )
+    client = TestClient(create_chat_app(agent, chat_db_path=tmp_path / "chat.sqlite"))
+    session_id = client.post("/api/sessions").json()["id"]
+
+    response = client.post(
+        f"/api/sessions/{session_id}/messages",
+        json={"content": "New untraced request"},
+    )
+
+    assert response.status_code == 200
+    assert "event: trace" not in response.text
+    assert [run["id"] for run in trace_store.list_runs()] == [stale_run_id]
+
+
+def test_chat_app_emits_the_trace_owned_by_its_stream_when_another_run_competes(tmp_path):
+    db_path = tmp_path / "traces.sqlite"
+    trace_store = SQLiteTraceStore(db_path)
+
+    class CompetingRunProvider(FakeProvider):
+        def stream_text(self, request):
+            self.completed_requests.append(request)
+            yield "Owned response."
+            competing_run_id = trace_store.start_run(
+                agent_name="chat_agent",
+                root_input="competing request",
+            )
+            trace_store.end_run(competing_run_id, final_output="competing response")
+
+    agent = create_agent(
+        name="chat_agent",
+        model="openrouter:deepseek/deepseek-v4-flash",
+        provider=CompetingRunProvider(),
+        trace_db_path=db_path,
+    )
+    client = TestClient(create_chat_app(agent, chat_db_path=tmp_path / "chat.sqlite"))
+    session_id = client.post("/api/sessions").json()["id"]
+
+    response = client.post(
+        f"/api/sessions/{session_id}/messages",
+        json={"content": "My request"},
+    )
+
+    trace_payload = response.text.split("event: trace\ndata: ", 1)[1].split("\n\n", 1)[0]
+    emitted_run_id = json.loads(trace_payload)["run_id"]
+    runs = trace_store.list_runs()
+    owned_run = next(run for run in runs if "My request" in run["root_input"])
+    competing_run = next(run for run in runs if run["root_input"] == "competing request")
+    assert emitted_run_id == owned_run["id"]
+    assert emitted_run_id != competing_run["id"]
 
 
 def test_chat_app_uses_agent_runtime_for_tools_and_tracing(tmp_path):
@@ -486,7 +550,7 @@ def test_chat_app_rejects_invalid_settings_without_mutating_runtime_state(tmp_pa
         "thinking": "off",
     }
     assert agent.model == "openrouter:deepseek/deepseek-v4-flash"
-    assert agent.temperature == 0.0
+    assert agent.temperature is None
 
 
 def test_chat_settings_preserve_native_google_provider(tmp_path):

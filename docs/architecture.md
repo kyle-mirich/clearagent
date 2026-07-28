@@ -20,8 +20,9 @@ completion. This is the core invariant that makes request replay possible.
 2. `Agent.run` normalizes the system prompt and user input into messages.
 3. The provider builds a provider-shaped request object without making the model
    call.
-4. If tracing is enabled, `TraceStore.save_model_request` persists the redacted
-   request snapshot.
+4. If tracing is enabled, the runtime creates a redacted request copy and passes
+   that snapshot to `TraceStore.save_model_request`. The provider still receives
+   the original request so authentication is not changed.
 5. The provider completes the request.
 6. The response, tool calls, structured output, turn output, and final run output
    are saved through the same store.
@@ -51,6 +52,12 @@ baseline rows. Provider adapters do not write to persistence directly; they
 only build and complete provider requests. Chat sessions and messages remain in
 the separate `ChatStore` even when chat trace inspection uses an injected
 `TraceStore`.
+
+The runtime redacts recognized secret keys in provider request bodies and
+header snapshots before any trace store receives them. A custom store still
+owns its backend access controls, encryption or other at-rest protections, and
+the handling of response, tool, and error data supplied through the rest of the
+protocol.
 
 ## Provider Boundary
 

@@ -26,6 +26,14 @@ def _json_default(value: Any) -> Any:
         return asdict(value)
     if isinstance(value, (Path, Enum)):
         return str(value.value if isinstance(value, Enum) else value)
-    if isinstance(value, (set, frozenset, tuple)):
-        return list(value)
+    if isinstance(value, (set, frozenset)):
+        return sorted(
+            value,
+            key=lambda item: json.dumps(
+                item,
+                default=_json_default,
+                ensure_ascii=False,
+                sort_keys=True,
+            ),
+        )
     return str(value)

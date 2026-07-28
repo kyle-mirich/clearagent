@@ -20,7 +20,7 @@ def load_project_config(path: str | Path = DEFAULT_CONFIG_PATH) -> dict[str, Any
 
 def tracing_config(path: str | Path = DEFAULT_CONFIG_PATH) -> tuple[bool, Path]:
     """Return validated tracing enablement and database path from project config."""
-    section = load_project_config(path).get("tracing") or {}
+    section = load_project_config(path).get("tracing", {})
     if not isinstance(section, dict):
         raise ValueError("ClearAgent config [tracing] must be a mapping.")
     enabled = section.get("enabled", True)

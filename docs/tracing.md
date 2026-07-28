@@ -36,6 +36,14 @@ provider.
 environment. `diff` reruns the request and compares output, finish reason, and
 usage against the stored response.
 
+Before adding fresh credentials, default replay verifies that a stored OpenAI,
+OpenRouter, Anthropic, or Google endpoint matches the selected provider's
+configured endpoint. A modified or noncanonical cloud endpoint is rejected
+without making an HTTP request. Python callers that intentionally use a custom
+cloud base URL must pass a provider configured with that same base URL. Stored
+OpenAI Chat Completions traces remain replayable through their recorded API
+shape even though new OpenAI runs use the Responses API.
+
 If a run or turn does not have a stored model request, or a stored request or
 response snapshot is malformed, these commands fail with a clear parameter
 error instead of falling through to a raw exception.

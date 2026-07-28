@@ -142,6 +142,73 @@ Before finishing a change, check whether `docs/site.md` still points readers to
 the right pages. If a new concept or workflow is added, either update an
 existing page or add a focused page and link it from `docs/site.md`.
 
+## Testing And Main-Branch Safety
+
+Treat `main` as releasable. Every change requires verification proportionate to
+what it can break. Changes that can affect runtime behavior, persistence,
+provider wire formats, public APIs, CLI or HTTP output, browser assets,
+examples, packaging, installation, or documented commands must include
+automated tests that exercise the changed contract. A focused test passing is
+not completion; the full repository gate must pass.
+
+For every changed behavior:
+
+- add or update a test that would detect the previous or broken behavior
+- cover the successful path and each relevant failure, rejection, boundary,
+  and persisted-state path introduced or changed
+- add a regression test that reproduces the exact failure for every bug fix
+- assert observable contracts such as return values, exceptions, exit status,
+  HTTP payloads, provider request bodies, traces, database rows, files, or
+  rendered interactions; merely asserting that a helper was called or that
+  source text exists is not enough
+- preserve and test existing public behavior, including malformed, legacy, and
+  backward-compatible inputs when applicable
+- put isolated logic tests in `tests/unit/` and cross-component behavior in
+  `tests/integration/`; use temporary directories and deterministic fake or
+  mocked providers
+
+Provider changes require credential-free tests for the applicable exact
+request shape, response and usage parsing, tool and structured-output round
+trips, streaming, non-success responses, malformed payloads, and normalized
+errors. Sanitized live recordings may supplement those tests. Paid live tests
+must remain explicitly opt-in, bounded, and secret-safe; they never replace
+required offline CI coverage.
+
+Changes to `src/clearagent/chat/static/` must be exercised by an executable
+browser or DOM test that covers the changed interaction and its failure state.
+Serving an asset or searching its source for function names is not sufficient.
+
+Changes to package metadata, dependencies, package data, static assets, public
+imports, or entry points must build both the sdist and wheel and test the built
+wheel from a temporary environment outside the repository. The smoke test must
+verify public imports, `clearagent --help`, bundled chat assets, and a fake
+provider run that writes a SQLite trace.
+
+Documentation changes must keep public commands and examples executable and
+must pass the documentation checker. Public behavior changes require matching
+reader-facing documentation in the same change.
+
+Tests must be deterministic and must not depend on real credentials, external
+network access, user home-directory state, wall-clock timing, or test order
+unless those dependencies are explicitly isolated. Do not delete or weaken a
+test, lower a coverage threshold, add a skip, xfail, deselection, collection
+override, suppression comment, or analysis ignore merely to make a change pass.
+Any justified replacement must retain or strengthen the same contract coverage.
+
+Changes to CI, test configuration, fixtures, or `scripts/check.sh` must include
+evidence that the gate still rejects a deliberately failing case; a successful
+run alone does not prove that a gate works.
+
+Before finishing any change, run:
+
+```bash
+uv run bash scripts/check.sh
+```
+
+Focused checks are useful during development but never replace the full gate.
+If the full gate cannot run or a required behavior cannot be tested, report the
+specific blocker and do not claim the change is safe to merge.
+
 ## Library Consumer Experience
 
 Treat ClearAgent as an installable library, not only as this repository. Public
@@ -169,7 +236,7 @@ Before claiming the project is ready to publish or consume as a package:
 
 - run `uv build` and confirm both sdist and wheel are produced
 - inspect the wheel when package data changes, especially chat static assets
-- run `./scripts/check.sh` when practical
+- run `./scripts/check.sh` and require it to pass
 - keep `pyproject.toml` project URLs valid for PyPI
 - keep release instructions token-safe; never document or commit real publish
   tokens
@@ -182,4 +249,5 @@ Before claiming the project is ready to publish or consume as a package:
   that design.
 - Avoid documenting commands that are not implemented in this repo.
 - Prefer runnable examples backed by `examples/` or tests.
-- Run `./scripts/check.sh` for broad verification when practical.
+- Run `./scripts/check.sh` and require it to pass before declaring a
+  change complete or safe to merge.

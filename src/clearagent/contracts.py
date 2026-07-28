@@ -30,7 +30,7 @@ def validate_tool_contract(fn: Callable[..., Any], case: ToolContractCase) -> To
             passed=False,
             error=f"{exc.__class__.__name__}: {exc}",
         )
-    if case.expected is not None and output != case.expected:
+    if "expected" in case.model_fields_set and output != case.expected:
         return ToolContractResult(
             name=case.name,
             passed=False,

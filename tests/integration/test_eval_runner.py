@@ -1,9 +1,12 @@
+from typing import cast
+
 import pytest
 
 from clearagent import create_agent
 from clearagent.evals.runner import EvalRunner
 from clearagent.evals.suite import EvalCase, EvalSuite
 from clearagent.providers.base import FakeProvider, ProviderError, ProviderResponse
+from clearagent.storage import TraceStore
 from clearagent.storage.sqlite import SQLiteTraceStore
 
 
@@ -33,6 +36,22 @@ def test_eval_runner_saves_trace_and_eval_results(tmp_path):
     assert report.passed == 1
     assert report.failed == 0
     assert len(store.list_eval_case_results(report.suite_run_id)) == 1
+
+
+def test_eval_runner_rejects_an_incomplete_custom_trace_store(tmp_path):
+    agent = create_agent(
+        name="support",
+        model="openai:gpt-4.1-mini",
+        provider=FakeProvider([ProviderResponse.fake_text("unused")]),
+        trace_store=cast(TraceStore, object()),
+    )
+    suite = EvalSuite(
+        name="smoke",
+        cases=[EvalCase(name="case", input="hello", checks=[{"contains": "hello"}])],
+    )
+
+    with pytest.raises(TypeError, match="complete TraceStore protocol"):
+        EvalRunner(agent).run_suite(suite)
 
 
 def test_eval_runner_failure_includes_run_id(tmp_path):
@@ -179,7 +198,7 @@ def test_matrix_setup_failure_finalizes_suite_run(tmp_path):
     suite = EvalSuite(
         name="matrix",
         matrix={"models": ["broken:model"]},
-        cases=[EvalCase(name="case", input="hello")],
+        cases=[EvalCase(name="case", input="hello", checks=[{"contains": "hello"}])],
     )
 
     def broken_factory(model):
@@ -193,3 +212,43 @@ def test_matrix_setup_failure_finalizes_suite_run(tmp_path):
     assert row["status"] == "error"
     assert row["ended_at"] is not None
     assert "cannot create" in row["metadata_json"]
+
+
+def test_eval_runner_rejects_empty_suite_before_provider_call(tmp_path):
+    provider = FakeProvider([ProviderResponse.fake_text("should not run")])
+    agent = create_agent(
+        name="support",
+        model="openai:gpt-4.1-mini",
+        provider=provider,
+        trace_db_path=tmp_path / "traces.sqlite",
+    )
+    suite = EvalSuite(
+        name="smoke",
+        cases=[EvalCase(name="case", input="hello", checks=[{"contains": "hello"}])],
+    )
+    suite.cases.clear()
+
+    with pytest.raises(ValueError, match="at least one case"):
+        EvalRunner(agent).run_suite(suite)
+
+    assert provider.completed_requests == []
+
+
+def test_eval_runner_rejects_case_without_checks_before_provider_call(tmp_path):
+    provider = FakeProvider([ProviderResponse.fake_text("should not run")])
+    agent = create_agent(
+        name="support",
+        model="openai:gpt-4.1-mini",
+        provider=provider,
+        trace_db_path=tmp_path / "traces.sqlite",
+    )
+    suite = EvalSuite(
+        name="smoke",
+        cases=[EvalCase(name="case", input="hello", checks=[{"contains": "hello"}])],
+    )
+    suite.cases[0].checks.clear()
+
+    with pytest.raises(ValueError, match="at least one check"):
+        EvalRunner(agent).run_suite(suite)
+
+    assert provider.completed_requests == []

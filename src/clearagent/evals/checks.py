@@ -2,7 +2,7 @@ import json
 import re
 from typing import Any
 
-from jsonschema import ValidationError, validate
+from jsonschema import SchemaError, ValidationError, validate
 from pydantic import BaseModel
 
 from clearagent.types import RunResult
@@ -37,6 +37,8 @@ def run_checks(checks: list[dict[str, Any]], result: RunResult) -> list[CheckRes
 
 
 def _run_check(check: dict[str, Any], result: RunResult) -> CheckResult:
+    if not isinstance(check, dict):
+        raise TypeError("check must be a mapping")
     if len(check) != 1:
         return CheckResult(name="invalid", passed=False, message="Check must have one key.")
     name, expected = next(iter(check.items()))
@@ -65,7 +67,9 @@ def _run_check(check: dict[str, Any], result: RunResult) -> CheckResult:
             name, expected not in output, f"does not contain {expected!r}", expected, output
         )
     if name == "regex":
-        return _regex_check(str(expected), output)
+        if not isinstance(expected, str):
+            raise TypeError("regex must be a string")
+        return _regex_check(expected, output)
     if name == "equals":
         return _check(name, output == expected, "equals expected output", expected, output)
     if name == "json_schema":
@@ -74,7 +78,7 @@ def _run_check(check: dict[str, Any], result: RunResult) -> CheckResult:
         if result.structured_output is not None:
             try:
                 validate(result.structured_output, expected)
-            except ValidationError as exc:
+            except (SchemaError, ValidationError) as exc:
                 return CheckResult(
                     name=name,
                     passed=False,
@@ -91,7 +95,7 @@ def _run_check(check: dict[str, Any], result: RunResult) -> CheckResult:
             )
         try:
             validate(json.loads(output), expected)
-        except (json.JSONDecodeError, ValidationError) as exc:
+        except (json.JSONDecodeError, SchemaError, ValidationError) as exc:
             return CheckResult(
                 name=name, passed=False, message=str(exc), expected=expected, actual=output
             )
@@ -99,8 +103,10 @@ def _run_check(check: dict[str, Any], result: RunResult) -> CheckResult:
             name=name, passed=True, message="json_schema passed", expected=expected, actual=output
         )
     if name == "refuses":
+        if not isinstance(expected, bool):
+            raise TypeError("refuses must be a boolean")
         refusal = any(token in output.lower() for token in ["cannot", "can't", "unable", "sorry"])
-        return _check(name, refusal is bool(expected), "refusal-like output", expected, output)
+        return _check(name, refusal is expected, "refusal-like output", expected, output)
     if name == "expected_tools":
         invalid = _invalid_list_check(name, expected)
         if invalid:
@@ -138,6 +144,8 @@ def _run_check(check: dict[str, Any], result: RunResult) -> CheckResult:
             result.cost_usd,
         )
     if name == "structured_output":
+        if not isinstance(expected, bool):
+            raise TypeError("structured_output must be a boolean")
         actual = result.structured_output
         if actual is None:
             try:
@@ -146,7 +154,7 @@ def _run_check(check: dict[str, Any], result: RunResult) -> CheckResult:
                 actual = None
         return _check(
             name,
-            (actual is not None) is bool(expected),
+            (actual is not None) is expected,
             "structured output parsed",
             expected,
             actual,
@@ -209,26 +217,31 @@ def _regex_check(pattern: str, output: str) -> CheckResult:
     return _check("regex", matched, f"matches regex {pattern!r}", pattern, output)
 
 
-def _trace_store(result: RunResult) -> TraceStore | None:
-    if not result.run_id:
-        return None
+def _trace_store(result: RunResult) -> tuple[TraceStore, str]:
+    run_id = result.run_id
+    if not run_id:
+        raise ValueError("trace data is unavailable")
     if result.trace_store is not None:
-        return result.trace_store
-    if not result.trace_db_path:
-        return None
-    return SQLiteTraceStore(result.trace_db_path)
+        store: TraceStore = result.trace_store
+    elif result.trace_db_path:
+        store = SQLiteTraceStore(result.trace_db_path)
+    else:
+        raise ValueError("trace data is unavailable")
+    if store.get_run(run_id) is None:
+        raise ValueError(f"trace run {run_id!r} was not found")
+    return store, run_id
 
 
 def _turns(result: RunResult) -> list[TraceTurn]:
-    store = _trace_store(result)
-    return store.get_turns(result.run_id) if store is not None and result.run_id else []
+    store, run_id = _trace_store(result)
+    return store.get_turns(run_id)
 
 
 def _model_calls(result: RunResult) -> list[ModelCallRecord]:
-    store = _trace_store(result)
-    return store.list_model_calls(result.run_id) if store is not None and result.run_id else []
+    store, run_id = _trace_store(result)
+    return store.list_model_calls(run_id)
 
 
 def _tool_calls(result: RunResult) -> list[ToolCallRecord]:
-    store = _trace_store(result)
-    return store.list_tool_calls(result.run_id) if store is not None and result.run_id else []
+    store, run_id = _trace_store(result)
+    return store.list_tool_calls(run_id)

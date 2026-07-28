@@ -1,12 +1,14 @@
+import json
 from typing import Any, cast
 
 from fastapi.testclient import TestClient
+import pytest
 
 from clearagent import create_agent
 from clearagent.chat import create_chat_app
 from clearagent.evals import EvalRunner, EvalSuite
 from clearagent.graph import AgentGraph
-from clearagent.providers import FakeProvider, ProviderResponse
+from clearagent.providers import FakeProvider, ProviderRequest, ProviderResponse
 from clearagent.storage import SQLiteTraceStore, TraceStore
 
 
@@ -24,10 +26,69 @@ class DelegatingTraceStore:
         return False
 
 
+class CapturingTraceStore(DelegatingTraceStore):
+    def __init__(self, backing: SQLiteTraceStore):
+        super().__init__(backing)
+        self.requests: list[ProviderRequest] = []
+
+    def save_model_request(
+        self,
+        *,
+        run_id: str,
+        turn_id: str,
+        request: ProviderRequest,
+    ) -> str:
+        self.requests.append(request)
+        return self.backing.save_model_request(run_id=run_id, turn_id=turn_id, request=request)
+
+
+class SecretRequestProvider(FakeProvider):
+    def build_request(self, **kwargs: Any) -> ProviderRequest:
+        request = super().build_request(**kwargs)
+        request.headers_snapshot["authorization"] = "Bearer top-secret"
+        request.body["api_key"] = "top-secret"
+        request.body["nested"] = {"refresh_token": "top-secret"}
+        return request
+
+
 def custom_store(path) -> tuple[TraceStore, SQLiteTraceStore]:
     backing = SQLiteTraceStore(path)
     assert isinstance(backing, TraceStore)
     return cast(TraceStore, DelegatingTraceStore(backing)), backing
+
+
+@pytest.mark.parametrize("stream", [False, True])
+def test_custom_store_receives_redacted_request_without_mutating_provider_request(tmp_path, stream):
+    backing = SQLiteTraceStore(tmp_path / "custom.sqlite")
+    store = CapturingTraceStore(backing)
+    provider = SecretRequestProvider([ProviderResponse.fake_text("done")])
+    agent = create_agent(
+        name="redacted_custom_store",
+        model="openai:test",
+        provider=provider,
+        trace_store=cast(TraceStore, store),
+    )
+
+    if stream:
+        assert list(agent.stream_text("run")) == ["done"]
+    else:
+        assert agent.run("run").output == "done"
+
+    captured = store.requests[0]
+    assert captured.headers_snapshot["authorization"] == "[REDACTED]"
+    assert captured.body["api_key"] == "[REDACTED]"
+    assert captured.body["nested"]["refresh_token"] == "[REDACTED]"
+
+    completed = provider.completed_requests[0]
+    assert completed.headers_snapshot["authorization"] == "Bearer top-secret"
+    assert completed.body["api_key"] == "top-secret"
+    assert completed.body["nested"]["refresh_token"] == "top-secret"
+
+    run_id = backing.list_runs()[0]["id"]
+    stored = json.loads(backing.list_model_calls(run_id)[0]["request_json"])
+    assert stored["headers_snapshot"]["authorization"] == "[REDACTED]"
+    assert stored["body"]["api_key"] == "[REDACTED]"
+    assert stored["body"]["nested"]["refresh_token"] == "[REDACTED]"
 
 
 def test_eval_runner_uses_custom_trace_store_for_runs_checks_and_results(tmp_path):

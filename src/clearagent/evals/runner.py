@@ -1,9 +1,9 @@
 from clearagent.agent import Agent
 from clearagent.evals.checks import run_checks
 from clearagent.evals.report import EvalCaseResult, EvalReport
-from clearagent.evals.suite import EvalCase, EvalSuite
+from clearagent.evals.suite import EvalCase, EvalSuite, require_runnable_suite
 from clearagent.providers.registry import provider_for_model
-from clearagent.storage.protocol import TraceStore
+from clearagent.storage.protocol import TraceStore, require_complete_trace_store
 from clearagent.storage.sqlite import SQLiteTraceStore
 
 
@@ -12,12 +12,14 @@ class EvalRunner:
 
     def __init__(self, agent: Agent, *, trace_db_path=None, provider_factory=None):
         self.agent = agent
+        self._has_explicit_provider_factory = provider_factory is not None
         self.provider_factory = provider_factory or provider_for_model
         if trace_db_path is not None:
             self.agent.trace_db_path = trace_db_path
 
     def run_suite(self, suite: EvalSuite) -> EvalReport:
         """Run every case, or dispatch to matrix execution when configured."""
+        require_runnable_suite(suite)
         if suite.matrix:
             return self.run_matrix(suite)
         store = self._store()
@@ -56,6 +58,7 @@ class EvalRunner:
 
     def run_matrix(self, suite: EvalSuite) -> EvalReport:
         """Run suite cases across configured model and temperature variants."""
+        require_runnable_suite(suite)
         variants = _matrix_variants(suite.matrix or {})
         if not variants:
             variants = [{"model": self.agent.model, "temperature": self.agent.temperature}]
@@ -78,7 +81,10 @@ class EvalRunner:
                 if "temperature" in variant:
                     effective_variant["temperature"] = temperature
                 self.agent.model = model
-                self.agent.provider = self.provider_factory(model)
+                if model == original_model and not self._has_explicit_provider_factory:
+                    self.agent.provider = original_provider
+                else:
+                    self.agent.provider = self.provider_factory(model)
                 self.agent.temperature = temperature
                 for case in suite.cases:
                     results.append(
@@ -151,6 +157,7 @@ class EvalRunner:
                 checks=check_dicts,
                 latency_ms=0,
                 cost_usd=None,
+                variant=variant,
             )
             return EvalCaseResult(
                 suite_name=suite.name,
@@ -180,6 +187,7 @@ class EvalRunner:
             checks=check_dicts,
             latency_ms=result.latency_ms,
             cost_usd=result.cost_usd,
+            variant=variant,
         )
         return EvalCaseResult(
             suite_name=suite.name,
@@ -216,7 +224,7 @@ class EvalRunner:
 
     def _store(self) -> TraceStore:
         if self.agent.trace_store is not None:
-            return self.agent.trace_store
+            return require_complete_trace_store(self.agent.trace_store)
         return SQLiteTraceStore(self.agent.trace_db_path)
 
 

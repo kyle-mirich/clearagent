@@ -157,6 +157,10 @@ def _responses_input(messages: list[Message]) -> list[dict[str, Any]]:
             )
             continue
         if message.role == "assistant" and message.metadata.get("tool_calls"):
+            preserved_output = message.metadata.get("openai_responses_output")
+            if isinstance(preserved_output, list):
+                items.extend(preserved_output)
+                continue
             if message.content:
                 items.append({"role": "assistant", "content": message.content})
             for call in message.metadata["tool_calls"]:

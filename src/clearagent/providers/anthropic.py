@@ -120,6 +120,8 @@ class AnthropicProvider:
                         raise provider_error(
                             request, f"stream response parse failed: {exc}"
                         ) from exc
+                    if not isinstance(data, dict):
+                        raise provider_error(request, "stream response must contain JSON objects")
                     if data.get("type") == "error":
                         error = data.get("error") or {}
                         message = (
@@ -198,6 +200,10 @@ def _anthropic_messages(messages: list[Message]) -> list[dict[str, Any]]:
             )
             continue
         if message.role == "assistant" and message.metadata.get("tool_calls"):
+            preserved_content = message.metadata.get("anthropic_content")
+            if isinstance(preserved_content, list):
+                converted.append({"role": "assistant", "content": preserved_content})
+                continue
             content: list[dict[str, Any]] = []
             if message.content:
                 content.append({"type": "text", "text": str(message.content)})

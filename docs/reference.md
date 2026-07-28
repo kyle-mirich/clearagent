@@ -35,7 +35,8 @@ Common arguments:
 - `trace_store`: optional implementation of the public `TraceStore` protocol;
   `SQLiteTraceStore` is the bundled default
 - `max_turns`: maximum model/tool loop iterations
-- `temperature`: provider temperature value
+- `temperature`: optional provider temperature; omitted by default so each
+  provider can apply its supported default
 - `provider`: optional custom provider, useful for tests
 - `response_format`: optional Pydantic model or provider response-format object
 
@@ -77,6 +78,9 @@ result = validate_tool_contract(
 assert result.passed
 ```
 
+Omitting `expected` checks only that argument validation and tool execution
+succeed. Passing `expected=None` explicitly requires the tool to return `None`.
+
 ### `FakeProvider`
 
 `FakeProvider` is available from `clearagent.providers` for deterministic tests
@@ -100,7 +104,9 @@ When tracing is active, `RunResult.trace_store` holds the exact `TraceStore`
 used for the run. Custom-store results have no SQLite `trace_db_path`. The store
 field is an in-process handle and is excluded from `model_dump()` and JSON
 serialization, including generated JSON Schema. `usage` is typed as
-`clearagent.providers.Usage | None`.
+`clearagent.providers.Usage | None`. Runtime result tool calls and usage accept
+only their documented fields; invalid extension fields raise validation errors
+instead of being silently discarded.
 
 `Agent.stream_text(...)` yields text chunks. When an agent has tools, ClearAgent
 runs the bounded tool loop and yields its final output as one chunk.
@@ -143,6 +149,8 @@ checks read the store retained on `RunResult`, with `trace_db_path` as a SQLite
 compatibility fallback. Chat session persistence remains separate in
 `clearagent.chat.ChatStore`. The protocol is runtime-checkable, so
 `isinstance(store, TraceStore)` can validate the structural surface.
+`EvalRunner` performs that validation before starting a suite and raises a
+clear error for an incomplete store.
 
 The read contract is not an unstructured SQLite detail. `TraceRun`,
 `TraceTurn`, `ModelCallRecord`, `ToolCallRecord`, and `EvalCaseResultRecord` are
@@ -202,6 +210,11 @@ the comparison succeeds; inspect its `regressions` list to enforce a policy.
 Malformed arguments, missing objects or trace rows, and other command errors
 exit non-zero with an explanatory message.
 
+Default `replay` and `diff` validate stored cloud-provider endpoints before
+adding fresh credentials. They reject endpoint mismatches without making an
+HTTP request and select the replay adapter from the stored API shape, including
+legacy OpenAI Chat Completions traces.
+
 `agent_module:object` is imported from the current working directory. For
 example:
 
@@ -218,9 +231,10 @@ object is missing.
 ## Eval Suite Format
 
 Eval suites are YAML mappings with a `name`, optional `type`, optional
-`description`, optional `defaults`, optional `matrix`, and a list of `cases`.
-`defaults` and `matrix` must be mappings. Matrix `models` and `temperatures`
-must be lists when present.
+`description`, optional `defaults`, optional `matrix`, and one or more `cases`.
+Every case requires at least one `checks` entry. Empty suites and cases without
+checks are rejected before any provider call. `defaults` and `matrix` must be
+mappings. Matrix `models` and `temperatures` must be lists when present.
 
 ```yaml
 name: smoke
@@ -235,6 +249,13 @@ cases:
 
 Cases may also carry optional `expected`, `reference_notes`, and `split` fields
 for interoperable datasets. The local deterministic checks do not require them.
+
+Temperature-only matrices keep the agent's current model and provider. Pass an
+explicit `provider_factory` to `EvalRunner` to construct providers for matrix
+variants. Persisted matrix results include canonical variant JSON, and baseline
+comparison identities append that variant JSON so repeated case names do not
+collapse across models or temperatures. Non-matrix baseline identities remain
+the plain case name.
 
 Available output check names:
 
@@ -261,6 +282,10 @@ Available trace-aware check names:
 - `max_turns`
 - `called_tool`
 - `not_called_tool`
+
+`regex` requires a string operand, while `refuses` and `structured_output`
+require booleans. Trace-aware checks fail when trace data or the referenced run
+is unavailable rather than treating missing evidence as success.
 
 ## Providers
 

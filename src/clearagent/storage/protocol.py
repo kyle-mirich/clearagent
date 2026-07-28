@@ -1,4 +1,4 @@
-from typing import Any, Protocol, TypedDict, runtime_checkable
+from typing import Any, Protocol, TypedDict, cast, runtime_checkable
 
 from clearagent.providers.base import ProviderRequest, ProviderResponse
 
@@ -86,6 +86,7 @@ class EvalCaseResultRecord(TypedDict):
     final_output: str | None
     passed: bool | int
     checks_json: str
+    variant_json: str
     failure_json: str | None
     latency_ms: int | None
     cost_usd: float | None
@@ -211,6 +212,23 @@ class TraceStore(Protocol):
         checks: list[dict[str, Any]],
         latency_ms: int | None,
         cost_usd: float | None,
+        variant: dict[str, Any] | None = None,
     ) -> str: ...
 
     def list_eval_case_results(self, suite_run_id: str) -> list[EvalCaseResultRecord]: ...
+
+
+def require_complete_trace_store(store: object) -> TraceStore:
+    """Return a structurally complete store or raise a useful contract error."""
+    required_methods = {
+        name
+        for name, member in vars(TraceStore).items()
+        if not name.startswith("_") and callable(member)
+    }
+    missing = sorted(name for name in required_methods if not callable(getattr(store, name, None)))
+    if missing:
+        raise TypeError(
+            "trace_store must implement the complete TraceStore protocol; "
+            f"missing: {', '.join(missing)}"
+        )
+    return cast(TraceStore, store)
