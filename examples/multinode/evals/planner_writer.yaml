@@ -1,7 +1,0 @@
-name: planner_writer
-type: output
-cases:
-  - name: final response
-    input: Draft a refund policy response.
-    checks:
-      - contains: final response

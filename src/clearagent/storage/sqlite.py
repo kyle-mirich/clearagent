@@ -4,22 +4,14 @@ import sqlite3
 import time
 from pathlib import Path
 from collections.abc import Iterator
-from typing import Any, cast
+from typing import Any
 from uuid import uuid4
 
-from clearagent.providers.base import ProviderRequest, ProviderResponse
-from clearagent.serialization import json_safe
-from clearagent.storage.protocol import (
-    EvalCaseResultRecord,
-    ModelCallRecord,
-    ToolCallRecord,
-    TraceRun,
-    TraceTurn,
-)
+from clearagent.runtime.providers.base import ProviderRequest, ProviderResponse
 from clearagent.storage.redaction import redact
 
 DEFAULT_TRACE_DB = Path(".clearagent/traces.sqlite")
-TRACE_SCHEMA_VERSION = 2
+TRACE_SCHEMA_VERSION = 1
 
 TRACE_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS runs (
@@ -110,7 +102,6 @@ CREATE TABLE IF NOT EXISTS eval_case_results (
   final_output TEXT,
   passed INTEGER NOT NULL,
   checks_json TEXT NOT NULL,
-  variant_json TEXT NOT NULL DEFAULT '{}',
   failure_json TEXT,
   latency_ms INTEGER,
   cost_usd REAL,
@@ -223,7 +214,6 @@ TRACE_COLUMNS = {
         "final_output": "TEXT",
         "passed": "INTEGER NOT NULL DEFAULT 0",
         "checks_json": "TEXT NOT NULL DEFAULT '[]'",
-        "variant_json": "TEXT NOT NULL DEFAULT '{}'",
         "failure_json": "TEXT",
         "latency_ms": "INTEGER",
         "cost_usd": "REAL",
@@ -250,8 +240,6 @@ def _id(prefix: str) -> str:
 
 
 class SQLiteTraceStore:
-    """SQLite implementation of the public trace persistence protocol."""
-
     def __init__(self, path: str | Path = DEFAULT_TRACE_DB):
         self.path = Path(path)
         self.initialize()
@@ -300,10 +288,10 @@ class SQLiteTraceStore:
                     run_id,
                     agent_name,
                     graph_name,
-                    root_input,
+                    redact(root_input),
                     "running",
                     _now(),
-                    json.dumps(metadata or {}),
+                    json.dumps(redact(metadata or {})),
                 ),
             )
         return run_id
@@ -316,32 +304,15 @@ class SQLiteTraceStore:
         status: str = "ok",
         latency_ms: int | None = None,
         error: dict[str, Any] | None = None,
-        prompt_tokens: int | None = None,
-        completion_tokens: int | None = None,
-        cost_usd: float | None = None,
     ) -> None:
+        metadata = json.dumps(redact({"error": error}) if error else {})
         with self.connect() as db:
-            row = db.execute("SELECT metadata_json FROM runs WHERE id=?", (run_id,)).fetchone()
-            metadata = json.loads(row["metadata_json"]) if row and row["metadata_json"] else {}
-            if error:
-                metadata["error"] = json_safe(error)
             db.execute(
                 """
-                UPDATE runs SET final_output=?, status=?, ended_at=?, total_latency_ms=?,
-                    total_prompt_tokens=?, total_completion_tokens=?, total_cost_usd=?, metadata_json=?
+                UPDATE runs SET final_output=?, status=?, ended_at=?, total_latency_ms=?, metadata_json=?
                 WHERE id=?
                 """,
-                (
-                    final_output,
-                    status,
-                    _now(),
-                    latency_ms,
-                    prompt_tokens,
-                    completion_tokens,
-                    cost_usd,
-                    json.dumps(metadata),
-                    run_id,
-                ),
+                (redact(final_output) if final_output is not None else None, status, _now(), latency_ms, metadata, run_id),
             )
 
     def start_turn(
@@ -365,7 +336,7 @@ class SQLiteTraceStore:
                     run_id,
                     turn_index,
                     node_name,
-                    json.dumps(input_messages),
+                    json.dumps(redact(input_messages)),
                     "[]",
                     "running",
                     _now(),
@@ -391,19 +362,24 @@ class SQLiteTraceStore:
                 WHERE id=?
                 """,
                 (
-                    json.dumps(output_messages),
-                    final_output,
+                    json.dumps(redact(output_messages)),
+                    redact(final_output) if final_output is not None else None,
                     status,
                     _now(),
                     latency_ms,
-                    json.dumps(error) if error else None,
+                    json.dumps(redact(error)) if error else None,
                     turn_id,
                 ),
             )
 
     def save_model_request(self, *, run_id: str, turn_id: str, request: ProviderRequest) -> str:
         model_call_id = _id("model_call")
-        payload = redact(request.model_dump())
+        payload = request.model_dump()
+        # Never persist credential material. Replay re-authenticates in memory
+        # from the live provider (replay.py), so stored header values are not
+        # needed; a boolean marker preserves the fact that auth was present.
+        has_auth = bool(payload.pop("headers_snapshot", None))
+        payload["has_auth"] = has_auth
         with self.connect() as db:
             db.execute(
                 """
@@ -418,8 +394,8 @@ class SQLiteTraceStore:
                     request.provider,
                     request.model,
                     request.api_shape,
-                    request.endpoint,
-                    json.dumps(payload),
+                    redact(request.endpoint),
+                    json.dumps(redact(payload)),
                     "running",
                     _now(),
                 ),
@@ -443,9 +419,7 @@ class SQLiteTraceStore:
                 """,
                 (
                     json.dumps(redact(response.model_dump())) if response else None,
-                    json.dumps(response.usage.model_dump())
-                    if response and response.usage
-                    else None,
+                    json.dumps(response.usage.model_dump()) if response and response.usage else None,
                     status,
                     _now(),
                     json.dumps(redact(error)) if error else None,
@@ -491,7 +465,7 @@ class SQLiteTraceStore:
                 WHERE id=?
                 """,
                 (
-                    json.dumps(redact(json_safe(result))),
+                    json.dumps(redact(result)),
                     status,
                     _now(),
                     json.dumps(redact(error)) if error else None,
@@ -499,24 +473,24 @@ class SQLiteTraceStore:
                 ),
             )
 
-    def list_runs(self) -> list[TraceRun]:
+    def list_runs(self) -> list[dict[str, Any]]:
         with self.connect() as db:
             rows = db.execute("SELECT * FROM runs ORDER BY started_at DESC").fetchall()
-        return [cast(TraceRun, dict(row)) for row in rows]
+        return [dict(row) for row in rows]
 
-    def get_run(self, run_id: str) -> TraceRun | None:
+    def get_run(self, run_id: str) -> dict[str, Any] | None:
         with self.connect() as db:
             row = db.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone()
-        return cast(TraceRun, dict(row)) if row else None
+        return dict(row) if row else None
 
-    def get_turns(self, run_id: str) -> list[TraceTurn]:
+    def get_turns(self, run_id: str) -> list[dict[str, Any]]:
         with self.connect() as db:
             rows = db.execute(
                 "SELECT * FROM turns WHERE run_id=? ORDER BY turn_index", (run_id,)
             ).fetchall()
-        return [cast(TraceTurn, dict(row)) for row in rows]
+        return [dict(row) for row in rows]
 
-    def get_model_call_for_turn(self, run_id: str, turn_index: int) -> ModelCallRecord | None:
+    def get_model_call_for_turn(self, run_id: str, turn_index: int) -> dict[str, Any] | None:
         with self.connect() as db:
             row = db.execute(
                 """
@@ -527,21 +501,19 @@ class SQLiteTraceStore:
                 """,
                 (run_id, turn_index),
             ).fetchone()
-        return cast(ModelCallRecord, dict(row)) if row else None
+        return dict(row) if row else None
 
-    def list_tool_calls(self, run_id: str) -> list[ToolCallRecord]:
+    def list_tool_calls(self, run_id: str) -> list[dict[str, Any]]:
         with self.connect() as db:
             rows = db.execute("SELECT * FROM tool_calls WHERE run_id=?", (run_id,)).fetchall()
-        return [cast(ToolCallRecord, dict(row)) for row in rows]
+        return [dict(row) for row in rows]
 
-    def list_model_calls(self, run_id: str) -> list[ModelCallRecord]:
+    def list_model_calls(self, run_id: str) -> list[dict[str, Any]]:
         with self.connect() as db:
             rows = db.execute("SELECT * FROM model_calls WHERE run_id=?", (run_id,)).fetchall()
-        return [cast(ModelCallRecord, dict(row)) for row in rows]
+        return [dict(row) for row in rows]
 
-    def start_eval_suite_run(
-        self, *, suite_name: str, suite_type: str, agent_name: str, model: str
-    ) -> str:
+    def start_eval_suite_run(self, *, suite_name: str, suite_type: str, agent_name: str, model: str) -> str:
         suite_run_id = _id("suite_run")
         with self.connect() as db:
             db.execute(
@@ -550,19 +522,7 @@ class SQLiteTraceStore:
                 (id, suite_name, suite_type, agent_name, model, started_at, status, passed, failed, skipped, metadata_json)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (
-                    suite_run_id,
-                    suite_name,
-                    suite_type,
-                    agent_name,
-                    model,
-                    _now(),
-                    "running",
-                    0,
-                    0,
-                    0,
-                    "{}",
-                ),
+                (suite_run_id, suite_name, suite_type, agent_name, model, _now(), "running", 0, 0, 0, "{}"),
             )
         return suite_run_id
 
@@ -608,18 +568,16 @@ class SQLiteTraceStore:
         checks: list[dict[str, Any]],
         latency_ms: int | None,
         cost_usd: float | None,
-        variant: dict[str, Any] | None = None,
     ) -> str:
         result_id = _id("case_result")
         failures = [check for check in checks if not check.get("passed")]
-        variant_json = json.dumps(variant or {}, sort_keys=True, separators=(",", ":"))
         with self.connect() as db:
             db.execute(
                 """
                 INSERT INTO eval_case_results
                 (id, suite_run_id, run_id, suite_name, case_name, input, final_output,
-                 passed, checks_json, variant_json, failure_json, latency_ms, cost_usd)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 passed, checks_json, failure_json, latency_ms, cost_usd)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     result_id,
@@ -627,32 +585,31 @@ class SQLiteTraceStore:
                     run_id,
                     suite_name,
                     case_name,
-                    input,
-                    final_output,
+                    redact(input),
+                    redact(final_output),
                     1 if passed else 0,
-                    json.dumps(checks),
-                    variant_json,
-                    json.dumps(failures) if failures else None,
+                    json.dumps(redact(checks)),
+                    json.dumps(redact(failures)) if failures else None,
                     latency_ms,
                     cost_usd,
                 ),
             )
         return result_id
 
-    def list_eval_case_results(self, suite_run_id: str) -> list[EvalCaseResultRecord]:
+    def list_eval_case_results(self, suite_run_id: str) -> list[dict[str, Any]]:
         with self.connect() as db:
             rows = db.execute(
                 "SELECT * FROM eval_case_results WHERE suite_run_id=?", (suite_run_id,)
             ).fetchall()
-        return [cast(EvalCaseResultRecord, dict(row)) for row in rows]
+        return [dict(row) for row in rows]
 
-    def get_latest_run_for_agent(self, agent_name: str) -> TraceRun | None:
+    def get_latest_run_for_agent(self, agent_name: str) -> dict[str, Any] | None:
         with self.connect() as db:
             row = db.execute(
                 "SELECT * FROM runs WHERE agent_name=? ORDER BY rowid DESC LIMIT 1",
                 (agent_name,),
             ).fetchone()
-        return cast(TraceRun, dict(row)) if row else None
+        return dict(row) if row else None
 
 
 def _ensure_columns(
@@ -661,7 +618,8 @@ def _ensure_columns(
 ) -> None:
     for table_name, columns in table_columns.items():
         existing = {
-            row["name"] for row in db.execute(f"PRAGMA table_info({table_name})").fetchall()
+            row["name"]
+            for row in db.execute(f"PRAGMA table_info({table_name})").fetchall()
         }
         for column_name, definition in columns.items():
             if column_name not in existing:

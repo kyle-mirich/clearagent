@@ -1,41 +1,84 @@
 import time
 from collections.abc import Callable
 import json
+import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from jsonschema import ValidationError as JSONSchemaValidationError
 from jsonschema import validate
+from langgraph.graph import END, START, StateGraph
 
-from clearagent.messages import Message, dump_messages, normalize_messages
-from clearagent.providers.base import (
+from clearagent.runtime.messages import Message, dump_messages, normalize_messages
+from clearagent.runtime.providers.base import (
     Provider,
-    ProviderRequest,
     ProviderResponse,
     ResponseFormat,
     ResponseFormatInput,
     Usage,
     normalize_response_format,
 )
-from clearagent.providers.model_uri import parse_model_uri
-from clearagent.serialization import json_safe, stringify
+from clearagent.runtime.providers.model_uri import parse_model_uri
 from clearagent.storage.sqlite import DEFAULT_TRACE_DB, SQLiteTraceStore
 from clearagent.storage.protocol import TraceStore
-from clearagent.storage.redaction import redact
 from clearagent.trace_lifecycle import TraceLifecycle, latency_ms
-from clearagent.tool import tool_name, validate_tool_arguments
-from clearagent.types import ExecutedToolCall, RunResult
+from clearagent.runtime.tools import tool_name, validate_tool_arguments
+from clearagent.runtime.types import RunResult
 
 
 class MaxTurnsExceeded(RuntimeError):
-    """Raised when an agent does not produce a final response within its turn limit."""
-
     pass
 
 
-class Agent:
-    """Run one provider-backed agent with optional tools, tracing, and structured output."""
+class _AgentState(TypedDict):
+    messages: list[Message]
+    turn_index: int
 
+
+logger = logging.getLogger(__name__)
+
+ROOT_INPUT_PREVIEW_CHARS = 2_000
+
+_TRACE_STORE_CACHE: dict[str, TraceStore] = {}
+
+
+def _trace_write(action: str, call: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+    # Observability must never fail otherwise valid product work: a broken or
+    # locked trace store degrades to a warning instead of raising into the run.
+    try:
+        return call(*args, **kwargs)
+    except Exception:
+        logger.warning("Trace write %s failed; continuing without it", action, exc_info=True)
+        return None
+
+
+def _message_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    try:
+        return json.dumps(content)
+    except (TypeError, ValueError):
+        return str(content)
+
+
+def _root_input_preview(input: str | list[Message]) -> str:
+    # Persist only conversation content, never the system prompt: root_input
+    # feeds shareable trace reports and must not leak hidden instructions.
+    if isinstance(input, str):
+        text = input
+    else:
+        parts = [
+            _message_text(message.content)
+            for message in input
+            if message.role != "system" and message.content
+        ]
+        text = "\n".join(parts)
+    if len(text) > ROOT_INPUT_PREVIEW_CHARS:
+        return text[: ROOT_INPUT_PREVIEW_CHARS - 1].rstrip() + "…"
+    return text
+
+
+class Agent:
     def __init__(
         self,
         *,
@@ -48,7 +91,8 @@ class Agent:
         trace_db_path: str | Path = DEFAULT_TRACE_DB,
         trace_store: TraceStore | None = None,
         max_turns: int = 8,
-        temperature: float | None = None,
+        max_tokens: int | None = None,
+        temperature: float | None = 0.0,
         response_format: ResponseFormatInput = None,
     ):
         self.name = name
@@ -60,13 +104,21 @@ class Agent:
         self.trace_db_path = Path(trace_db_path)
         self.trace_store = trace_store
         self.max_turns = max_turns
+        self.max_tokens = max_tokens
         self.temperature = temperature
         self.response_format = normalize_response_format(response_format)
 
     def _store(self) -> TraceStore:
-        if self.trace_store is not None:
+        if self.trace_store:
             return self.trace_store
-        return SQLiteTraceStore(self.trace_db_path)
+        # Reuse one store per trace DB path: re-running schema DDL and column
+        # migrations on every call adds contention under concurrent runs.
+        cache_key = str(Path(self.trace_db_path))
+        store = _TRACE_STORE_CACHE.get(cache_key)
+        if store is None:
+            store = SQLiteTraceStore(cache_key)
+            _TRACE_STORE_CACHE[cache_key] = store
+        return store
 
     def run(
         self,
@@ -81,140 +133,210 @@ class Agent:
         turn_index_offset: int = 0,
         extra: dict[str, Any] | None = None,
     ) -> RunResult:
-        """Run the bounded model/tool loop and return the final result."""
         started = time.monotonic()
         should_trace = self.trace if trace is None else trace
-        store = (
-            trace_store if trace_store is not None else (self._store() if should_trace else None)
-        )
+        store = trace_store or (self._store() if should_trace else None)
         own_run = run_id is None
-        root_input = input if isinstance(input, str) else repr(input)
-        if store is not None and run_id is None:
-            run_id = store.start_run(
-                agent_name=self.name, root_input=root_input, graph_name=graph_name
+        root_input = _root_input_preview(input)
+        if store and run_id is None:
+            run_id = _trace_write(
+                "start_run",
+                store.start_run,
+                agent_name=self.name,
+                root_input=root_input,
+                graph_name=graph_name,
             )
         trace_lifecycle = TraceLifecycle(store, run_id, own_run=own_run, run_started=started)
 
         messages = normalize_messages(self.system_prompt, input)
-        all_tool_calls: list[ExecutedToolCall] = []
-        usage = None
-        node = node_name or self.name
+        # Per-run context lives in this closure, never on the Agent instance:
+        # one Agent may serve concurrent graph runs.
+        ctx: dict[str, Any] = {
+            "usage": Usage(),
+            "tool_calls": [],
+            "pending_tool_calls": [],
+            "turn_id": None,
+            "turn_started": None,
+            "result": None,
+        }
+        execution_graph = self._execution_graph(
+            store=store,
+            run_id=run_id,
+            trace_lifecycle=trace_lifecycle,
+            node=node_name or self.name,
+            turn_index_offset=turn_index_offset,
+            end_run=end_run,
+            extra=extra or {},
+            started=started,
+            should_trace=should_trace,
+            ctx=ctx,
+        )
+        final_state = execution_graph.invoke(
+            {"messages": messages, "turn_index": 0},
+            config={"recursion_limit": self.max_turns * 2 + 4},
+        )
+        _ = final_state
+        result: RunResult = ctx["result"]
+        return result
 
-        for turn_index in range(self.max_turns):
-            persisted_turn_index = turn_index_offset + turn_index
-            turn_started = time.monotonic()
+    def _execution_graph(
+        self,
+        *,
+        store: TraceStore | None,
+        run_id: str | None,
+        trace_lifecycle: TraceLifecycle,
+        node: str,
+        turn_index_offset: int,
+        end_run: bool,
+        extra: dict[str, Any],
+        started: float,
+        should_trace: bool,
+        ctx: dict[str, Any],
+    ):
+        def model_node(state: _AgentState) -> _AgentState:
+            turn_index = state["turn_index"]
+            messages = list(state["messages"])
+            if turn_index >= self.max_turns:
+                error = {"type": "MaxTurnsExceeded", "message": f"Exceeded {self.max_turns} turns."}
+                trace_lifecycle.end_run(status="error", error=error)
+                raise MaxTurnsExceeded(error["message"])
+
+            ctx["turn_started"] = time.monotonic()
             turn_id = None
-            if store is not None and run_id:
-                turn_id = store.start_turn(
+            if store and run_id:
+                turn_id = _trace_write(
+                    "start_turn",
+                    store.start_turn,
                     run_id=run_id,
-                    turn_index=persisted_turn_index,
+                    turn_index=turn_index_offset + turn_index,
                     node_name=node,
                     input_messages=dump_messages(messages),
                 )
+            ctx["turn_id"] = turn_id
+            request = self.provider.build_request(
+                model=_request_model_name(self.model),
+                messages=messages,
+                tools=self.tools,
+                tool_choice="auto" if self.tools else None,
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+                extra=extra,
+                response_format=self.response_format,
+            )
             model_call_id = None
-            try:
-                request = self.provider.build_request(
-                    model=_request_model_name(self.model),
-                    messages=messages,
-                    tools=self.tools,
-                    tool_choice="auto" if self.tools else None,
-                    temperature=self.temperature,
-                    max_tokens=None,
-                    extra=extra or {},
-                    response_format=self.response_format,
+            if store and run_id and turn_id:
+                model_call_id = _trace_write(
+                    "save_model_request",
+                    store.save_model_request,
+                    run_id=run_id,
+                    turn_id=turn_id,
+                    request=request,
                 )
-                if store is not None and run_id and turn_id:
-                    model_call_id = store.save_model_request(
-                        run_id=run_id,
-                        turn_id=turn_id,
-                        request=_redacted_request(request),
-                    )
+            try:
                 response = self.provider.complete(request)
-                if not response.tool_calls:
-                    _apply_structured_output(response, self.response_format)
+                _apply_structured_output(response, self.response_format)
             except Exception as exc:
                 trace_lifecycle.record_model_error(
                     model_call_id=model_call_id,
                     turn_id=turn_id,
                     messages=messages,
-                    turn_started=turn_started,
+                    turn_started=ctx["turn_started"],
                     exc=exc,
-                    usage=usage,
                 )
                 raise
             trace_lifecycle.save_model_response(model_call_id, response=response)
-            usage = merge_usage(usage, response.usage)
+            if response.usage:
+                # Accumulate across turns so multi-turn tool runs report total
+                # spend instead of just the final turn's tokens.
+                usage: Usage = ctx["usage"]
+                ctx["usage"] = Usage(
+                    prompt_tokens=usage.prompt_tokens + response.usage.prompt_tokens,
+                    completion_tokens=usage.completion_tokens + response.usage.completion_tokens,
+                    total_tokens=usage.total_tokens + response.usage.total_tokens,
+                )
             messages.append(_assistant_message(response))
 
             if response.tool_calls:
-                for call in response.tool_calls:
-                    tool_call_id = None
-                    if store is not None and run_id and turn_id:
-                        tool_call_id = store.start_tool_call(
-                            run_id=run_id,
-                            turn_id=turn_id,
-                            tool_name=call.name,
-                            args=call.arguments,
-                        )
-                    try:
-                        tool_fn = self._find_tool(call.name)
-                        validated_arguments = validate_tool_arguments(tool_fn, call.arguments)
-                        result = tool_fn(**validated_arguments)
-                    except Exception as exc:
-                        trace_lifecycle.record_tool_error(
-                            tool_call_id=tool_call_id,
-                            turn_id=turn_id,
-                            messages=messages,
-                            turn_started=turn_started,
-                            exc=exc,
-                            usage=usage,
-                        )
-                        raise
-                    safe_result = json_safe(result)
-                    if store is not None and tool_call_id:
-                        store.end_tool_call(tool_call_id, result=safe_result)
-                    all_tool_calls.append(
-                        {"name": call.name, "arguments": call.arguments, "result": safe_result}
-                    )
-                    messages.append(
-                        Message(
-                            role="tool",
-                            content=stringify(result),
-                            tool_call_id=call.id,
-                            name=call.name,
-                        )
-                    )
-                trace_lifecycle.end_turn(
-                    turn_id,
-                    output_messages=dump_messages(messages),
-                    turn_started=turn_started,
-                )
-                continue
+                ctx["pending_tool_calls"] = response.tool_calls
+                return {"messages": messages, "turn_index": turn_index + 1}
 
             output = response.output_text or ""
-            run_latency_ms = latency_ms(started)
             trace_lifecycle.end_turn(
                 turn_id,
                 output_messages=dump_messages(messages),
                 final_output=output,
-                turn_started=turn_started,
+                turn_started=ctx["turn_started"],
             )
-            trace_lifecycle.end_run(final_output=output, end_run=end_run, usage=usage)
-            return RunResult(
+            trace_lifecycle.end_run(final_output=output, end_run=end_run)
+            ctx["result"] = RunResult(
                 output=output,
                 run_id=run_id,
-                trace_db_path=_trace_db_path(store),
-                trace_store=store,
-                tool_calls=all_tool_calls,
-                usage=usage,
-                cost_usd=usage.cost_usd if usage else None,
-                latency_ms=run_latency_ms,
+                trace_db_path=self.trace_db_path if should_trace else None,
+                tool_calls=ctx["tool_calls"],
+                usage=ctx["usage"],
+                latency_ms=latency_ms(started),
                 structured_output=response.structured_output,
             )
+            return {"messages": messages, "turn_index": turn_index + 1}
 
-        error = {"type": "MaxTurnsExceeded", "message": f"Exceeded {self.max_turns} turns."}
-        trace_lifecycle.end_run(status="error", error=error, usage=usage)
-        raise MaxTurnsExceeded(error["message"])
+        def tools_node(state: _AgentState) -> _AgentState:
+            messages = list(state["messages"])
+            for call in ctx["pending_tool_calls"]:
+                tool_call_id = None
+                if store and run_id and ctx["turn_id"]:
+                    tool_call_id = _trace_write(
+                        "start_tool_call",
+                        store.start_tool_call,
+                        run_id=run_id,
+                        turn_id=ctx["turn_id"],
+                        tool_name=call.name,
+                        args=call.arguments,
+                    )
+                try:
+                    tool_fn = self._find_tool(call.name)
+                    validated_arguments = validate_tool_arguments(tool_fn, call.arguments)
+                    result = tool_fn(**validated_arguments)
+                except Exception as exc:
+                    trace_lifecycle.record_tool_error(
+                        tool_call_id=tool_call_id,
+                        turn_id=ctx["turn_id"],
+                        messages=messages,
+                        turn_started=ctx["turn_started"],
+                        exc=exc,
+                    )
+                    raise
+                if store and tool_call_id:
+                    _trace_write("end_tool_call", store.end_tool_call, tool_call_id, result=result)
+                ctx["tool_calls"].append({"name": call.name, "arguments": call.arguments, "result": result})
+                messages.append(
+                    Message(
+                        role="tool",
+                        content=_stringify_tool_result(result),
+                        tool_call_id=call.id,
+                        name=call.name,
+                    )
+                )
+            ctx["pending_tool_calls"] = []
+            trace_lifecycle.end_turn(
+                ctx["turn_id"],
+                output_messages=dump_messages(messages),
+                turn_started=ctx["turn_started"],
+            )
+            return {"messages": messages, "turn_index": state["turn_index"]}
+
+        def route_after_model(state: _AgentState) -> str:
+            _ = state
+            if ctx["result"] is not None:
+                return END
+            return "tools"
+
+        builder = StateGraph(_AgentState)
+        builder.add_node("model", model_node)
+        builder.add_node("tools", tools_node)
+        builder.add_edge(START, "model")
+        builder.add_conditional_edges("model", route_after_model, {"tools": "tools", END: END})
+        builder.add_edge("tools", "model")
+        return builder.compile()
 
     def stream_text(
         self,
@@ -227,11 +349,6 @@ class Agent:
         graph_name: str | None = None,
         extra: dict[str, Any] | None = None,
     ):
-        """Yield provider text chunks while recording the run when tracing is enabled.
-
-        Agents with tools use the normal bounded tool loop and yield the final
-        output as one chunk because tool execution requires complete responses.
-        """
         if self.tools:
             run_extra = dict(extra or {})
             run_extra.pop("stream", None)
@@ -249,14 +366,16 @@ class Agent:
 
         started = time.monotonic()
         should_trace = self.trace if trace is None else trace
-        store = (
-            trace_store if trace_store is not None else (self._store() if should_trace else None)
-        )
+        store = trace_store or (self._store() if should_trace else None)
         own_run = run_id is None
-        root_input = input if isinstance(input, str) else repr(input)
-        if store is not None and run_id is None:
-            run_id = store.start_run(
-                agent_name=self.name, root_input=root_input, graph_name=graph_name
+        root_input = _root_input_preview(input)
+        if store and run_id is None:
+            run_id = _trace_write(
+                "start_run",
+                store.start_run,
+                agent_name=self.name,
+                root_input=root_input,
+                graph_name=graph_name,
             )
         trace_lifecycle = TraceLifecycle(store, run_id, own_run=own_run, run_started=started)
 
@@ -264,51 +383,67 @@ class Agent:
         node = node_name or self.name
         turn_started = time.monotonic()
         turn_id = None
-        if store is not None and run_id:
-            turn_id = store.start_turn(
+        if store and run_id:
+            turn_id = _trace_write(
+                "start_turn",
+                store.start_turn,
                 run_id=run_id,
                 turn_index=0,
                 node_name=node,
                 input_messages=dump_messages(messages),
             )
+        request = self.provider.build_request(
+            model=_request_model_name(self.model),
+            messages=messages,
+            tools=[],
+            tool_choice=None,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            extra=extra or {},
+            response_format=self.response_format,
+        )
         model_call_id = None
+        if store and run_id and turn_id:
+            model_call_id = _trace_write(
+                "save_model_request",
+                store.save_model_request,
+                run_id=run_id,
+                turn_id=turn_id,
+                request=request,
+            )
+
         chunks: list[str] = []
         try:
-            request = self.provider.build_request(
-                model=_request_model_name(self.model),
-                messages=messages,
-                tools=[],
-                tool_choice=None,
-                temperature=self.temperature,
-                max_tokens=None,
-                extra=extra or {},
-                response_format=self.response_format,
-            )
-            if store is not None and run_id and turn_id:
-                model_call_id = store.save_model_request(
-                    run_id=run_id,
-                    turn_id=turn_id,
-                    request=_redacted_request(request),
-                )
             for chunk in self.provider.stream_text(request):
                 chunks.append(chunk)
                 yield chunk
-            output = "".join(chunks)
-            streamed_response = ProviderResponse(
-                provider=request.provider,
-                model=request.model,
-                raw={"streamed": True},
-                output_text=output,
-            )
-            _apply_structured_output(streamed_response, self.response_format)
         except GeneratorExit:
-            trace_lifecycle.record_model_error(
-                model_call_id=model_call_id,
-                turn_id=turn_id,
-                messages=messages,
-                turn_started=turn_started,
-                exc=RuntimeError("stream consumer closed before completion"),
+            # Consumer abandoned the stream: close out trace state instead of
+            # leaving the run and turn rows stuck in "running" forever.
+            partial = "".join(chunks)
+            messages.append(Message(role="assistant", content=partial))
+            abandoned = {
+                "type": "StreamAbandoned",
+                "message": "Consumer disconnected before the stream finished.",
+            }
+            trace_lifecycle.save_model_response(
+                model_call_id,
+                response=ProviderResponse(
+                    provider=request.provider,
+                    model=request.model,
+                    raw={"streamed": True, "abandoned": True},
+                    output_text=partial,
+                ),
             )
+            trace_lifecycle.end_turn(
+                turn_id,
+                output_messages=dump_messages(messages),
+                final_output=partial,
+                status="aborted",
+                error=abandoned,
+                turn_started=turn_started,
+            )
+            trace_lifecycle.end_run(final_output=partial, status="aborted", error=abandoned)
             raise
         except Exception as exc:
             trace_lifecycle.record_model_error(
@@ -320,10 +455,16 @@ class Agent:
             )
             raise
 
+        output = "".join(chunks)
         messages.append(Message(role="assistant", content=output))
         trace_lifecycle.save_model_response(
             model_call_id,
-            response=streamed_response,
+            response=ProviderResponse(
+                provider=request.provider,
+                model=request.model,
+                raw={"streamed": True},
+                output_text=output,
+            ),
         )
         trace_lifecycle.end_turn(
             turn_id,
@@ -341,41 +482,17 @@ class Agent:
 
 
 def _assistant_message(response: ProviderResponse) -> Message:
-    metadata: dict[str, Any] = {}
+    metadata = {}
     if response.tool_calls:
-        metadata["tool_calls"] = []
-        for call in response.tool_calls:
-            serialized_call = {
+        metadata["tool_calls"] = [
+            {
                 "id": call.id,
                 "type": "function",
                 "function": {"name": call.name, "arguments": call.arguments},
             }
-            if call.provider_data:
-                serialized_call["provider_data"] = call.provider_data
-            metadata["tool_calls"].append(serialized_call)
-        openai_output = response.raw.get("output")
-        if isinstance(openai_output, list):
-            metadata["openai_responses_output"] = openai_output
-        anthropic_content = response.raw.get("content")
-        if isinstance(anthropic_content, list):
-            metadata["anthropic_content"] = anthropic_content
+            for call in response.tool_calls
+        ]
     return Message(role="assistant", content=response.output_text, metadata=metadata)
-
-
-def _trace_db_path(store: TraceStore | None) -> Path | None:
-    if isinstance(store, SQLiteTraceStore):
-        return store.path
-    return None
-
-
-def _redacted_request(request: ProviderRequest) -> ProviderRequest:
-    """Copy a provider request with persistence-sensitive fields redacted."""
-    return request.model_copy(
-        update={
-            "body": redact(request.body),
-            "headers_snapshot": redact(request.headers_snapshot),
-        }
-    )
 
 
 def _request_model_name(model_uri: str) -> str:
@@ -403,9 +520,7 @@ def _apply_structured_output(
     try:
         parsed = json.loads(response.output_text)
     except json.JSONDecodeError as exc:
-        raise ValueError(
-            f"Invalid structured output JSON for {response_format.name!r}: {exc}"
-        ) from exc
+        raise ValueError(f"Invalid structured output JSON for {response_format.name!r}: {exc}") from exc
     try:
         validate(parsed, response_format.json_schema)
     except JSONSchemaValidationError as exc:
@@ -415,19 +530,7 @@ def _apply_structured_output(
     response.structured_output = parsed
 
 
-def merge_usage(current: Usage | None, incoming: Usage | None) -> Usage | None:
-    if incoming is None:
-        return current
-    if current is None:
-        return incoming.model_copy()
-    cost_usd = (
-        current.cost_usd + incoming.cost_usd
-        if current.cost_usd is not None and incoming.cost_usd is not None
-        else None
-    )
-    return Usage(
-        prompt_tokens=current.prompt_tokens + incoming.prompt_tokens,
-        completion_tokens=current.completion_tokens + incoming.completion_tokens,
-        total_tokens=current.total_tokens + incoming.total_tokens,
-        cost_usd=cost_usd,
-    )
+def _stringify_tool_result(result: Any) -> str:
+    if isinstance(result, str):
+        return result
+    return str(result)
