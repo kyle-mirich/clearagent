@@ -27,6 +27,15 @@ small generic FastAPI surface and a Python/CLI interface for the engine itself.
 
 Use Python 3.14 and `uv`:
 
+From another project, install this engine as a dependency (pin a full commit or
+release in production):
+
+```bash
+uv add "clearagent @ git+https://github.com/kyle-mirich/clearagent.git"
+```
+
+For contributors in this checkout:
+
 ```bash
 uv sync --locked --dev
 uv run clearagent build \
@@ -38,9 +47,7 @@ uv run clearagent build \
 The Python API exposes the same build engine:
 
 ```python
-from clearagent.builds.module import Build
-from clearagent.config import Settings
-from clearagent.models import PlanningRequest
+from clearagent import Build, Settings, PlanningRequest
 
 engine = Build(Settings(deterministic_mode=True))
 plan = engine.plan(PlanningRequest(goal="Build a release notes summarizer."))
@@ -79,10 +86,16 @@ app = create_app()
 
 ## Scope boundary
 
-The private Studio product consumes this engine and adds its own product API,
+This repository is the canonical engine implementation. The private Studio
+product installs a pinned engine commit and adds its own product API,
 source ingestion, retrieval, grounded chat, frontend, authentication, and
 deployment configuration. Those concerns are deliberately kept out of this
 repository.
+
+Studio uses a separate `clearagent_studio` namespace and extends engine settings
+with hosted configuration. Engine changes are made here once, not copied back
+and forth. Generic build records and stored agent configurations belong here;
+Studio's HTTP request/response schemas do not.
 
 See [docs/architecture.md](docs/architecture.md) for the module map and the
 engine-to-product seam.

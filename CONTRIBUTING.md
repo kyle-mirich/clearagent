@@ -21,6 +21,10 @@ uv run pytest -q
 uv build
 ```
 
+The admission mutation campaign lives here with the engine:
+`uv run bash scripts/mutation.sh`. Product integration tests run in the private
+Studio repository against its pinned engine dependency.
+
 Tests must not require live provider credentials or external network access.
 Provider-backed behavior should use deterministic fakes or sanitized fixtures.
 

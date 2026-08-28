@@ -38,3 +38,8 @@ jobs:
       - run: uv run python -m mypy src
       - run: uv run pytest -q
       - run: uv build
+      - name: Verify installed engine wheel outside checkout
+        run: >-
+          uv run --isolated --no-project --directory "$(mktemp -d)" --python 3.14
+          --with "$GITHUB_WORKSPACE/dist/clearagent-0.1.0-py3-none-any.whl"
+          python "$GITHUB_WORKSPACE/scripts/smoke_package.py"

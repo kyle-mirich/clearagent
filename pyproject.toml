@@ -30,6 +30,7 @@ dependencies = [
   "gepa>=0.1.1,<0.2",
   "langgraph>=1.0",
   "langchain>=1.0",
+  "langchain-core>=1.0",
   "langchain-openai>=1.0",
   "langchain-anthropic>=1.0",
   "langchain-google-genai>=1.0",
@@ -49,6 +50,7 @@ dev = [
   "pytest-socket>=0.7",
   "ruff>=0.8",
   "mypy>=1.13",
+  "mutmut>=3.7,<4",
 ]
 
 [build-system]
@@ -70,3 +72,17 @@ target-version = "py314"
 [tool.mypy]
 python_version = "3.14"
 ignore_missing_imports = true
+
+[tool.mutmut]
+source_paths = ["src/clearagent"]
+only_mutate = [
+  "src/clearagent/builds/admission.py",
+]
+pytest_add_cli_args_test_selection = [
+  "tests/test_scoring.py",
+]
+mutate_only_covered_lines = false
+use_setproctitle = false
+# Python 3.14 uses frozen import frames; mutmut's positive stack-depth filter
+# attempts to resolve those pseudo-paths. Keep the default unlimited stack here.
+max_stack_depth = -1

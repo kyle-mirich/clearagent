@@ -4,6 +4,11 @@ This repository is the public, local-first ClearAgent engine. Keep Studio-only
 HTTP contracts, source ingestion, grounded product chat, frontend code, and
 deployment secrets out of it.
 
+This repository is the canonical implementation, not a generated projection.
+Private Studio installs this package at a pinned Git commit under a distinct
+`clearagent_studio` namespace. Keep engine settings/models free of Studio HTTP
+schemas and hosted configuration. Preserve the top-level consumer imports.
+
 ## Setup
 
 Use Python 3.14 and `uv`:

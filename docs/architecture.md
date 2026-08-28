@@ -3,6 +3,10 @@
 ClearAgent Engine is the public backend core consumed by the private ClearAgent
 Studio product.
 
+There is one implementation of the shared engine: this package. Studio depends
+on a pinned public commit, owns the `clearagent_studio` namespace, and subclasses
+engine `Settings` for its hosted configuration. No sync/export step is needed.
+
 | Module | Responsibility |
 | --- | --- |
 | `agent.py` | Runs a bounded model/tool loop through LangGraph `StateGraph`. |
