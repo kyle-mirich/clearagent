@@ -40,6 +40,12 @@ def test_build_request_snapshots_openai_style_body_for_traces():
     assert request.api_shape == "openai_chat_completions"
 
 
+def test_direct_openai_uses_responses_api_without_server_storage():
+    model = build_langchain_chat_model(provider="openai", model="gpt-5.6-luna")
+    assert model.use_responses_api is True
+    assert model.store is False
+
+
 def test_complete_maps_langchain_response_to_provider_response():
     provider = _provider(
         AIMessage(

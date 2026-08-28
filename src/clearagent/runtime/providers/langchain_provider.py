@@ -315,6 +315,8 @@ def build_langchain_chat_model(
             "model": model,
             "timeout": 120,
             "api_key": SecretStr(os.environ.get("OPENAI_API_KEY") or "not-needed"),
+            "use_responses_api": True,
+            "store": False,
         }
         if model.startswith("gpt-5.6"):
             kwargs["reasoning_effort"] = "none"
