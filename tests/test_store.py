@@ -243,7 +243,7 @@ def test_repeated_pipeline_builds_continue_the_project_version_sequence(tmp_path
     ] == [[0, 1], [2, 3]]
 
 
-def test_run_fails_when_no_version_clears_quality_admission(tmp_path, monkeypatch):
+def test_run_activates_seed_fallback_when_no_version_clears_quality_admission(tmp_path, monkeypatch):
     def fake_optimize(**kwargs):
         return PromptOptimizationResult(
             instruction=kwargs["seed_instruction"] + "\nAnswer directly.",
@@ -296,20 +296,24 @@ def test_run_fails_when_no_version_clears_quality_admission(tmp_path, monkeypatc
         dataset_size=5,
     )
 
-    with pytest.raises(RuntimeError, match="holdout quality admission gates"):
-        run_improvement_pipeline(
-            store,
-            run.id,
-            PipelineSettings(deterministic_mode=True),
-        )
+    run_improvement_pipeline(
+        store,
+        run.id,
+        PipelineSettings(deterministic_mode=True),
+    )
 
     completed = store.get_run(run.id, owner_id="owner-a")
-    assert completed.status == "failed"
+    assert completed.status == "completed"
+    assert completed.best_agent_version_id is not None
     assert completed.promotion_decision["promoted"] is False
+    assert completed.promotion_decision["winner"] == "seed"
+    assert completed.promotion_decision["fallback"] is True
+    assert completed.promotion_decision["deployed_agent_version_id"] == completed.best_agent_version_id
     event_types = [event.type for event in store.list_events(run.id)]
     assert "verification_rejected" in event_types
-    assert "verification_completed" not in event_types
-    assert store.get_project(project.id, owner_id="owner-a").promoted_agent_version_id is None
+    assert "run_completed" in event_types
+    assert "run_failed" not in event_types
+    assert store.get_project(project.id, owner_id="owner-a").promoted_agent_version_id == completed.best_agent_version_id
 
 
 def test_dataset_generation_degrades_with_a_clear_error_when_every_batch_fails(tmp_path, monkeypatch):
