@@ -243,7 +243,7 @@ def test_repeated_pipeline_builds_continue_the_project_version_sequence(tmp_path
     ] == [[0, 1], [2, 3]]
 
 
-def test_run_activates_seed_fallback_when_no_version_clears_quality_admission(tmp_path, monkeypatch):
+def test_run_promotes_holdout_improvement_even_below_absolute_quality_floors(tmp_path, monkeypatch):
     def fake_optimize(**kwargs):
         return PromptOptimizationResult(
             instruction=kwargs["seed_instruction"] + "\nAnswer directly.",
@@ -254,9 +254,10 @@ def test_run_activates_seed_fallback_when_no_version_clears_quality_admission(tm
 
     def fake_evaluate(self, instruction, examples, on_case_completed=None):
         holdout = examples[0]["split"] == "test"
+        optimized = "Answer directly." in instruction
         case = CaseJudgment(
             example_id=examples[0]["id"],
-            score=0.4 if holdout else 0.9,
+            score=(0.5 if optimized else 0.4) if holdout else 0.9,
             passed=not holdout,
             reasoning=(
                 "The holdout failed graded and required behavior checks."
@@ -305,12 +306,12 @@ def test_run_activates_seed_fallback_when_no_version_clears_quality_admission(tm
     completed = store.get_run(run.id, owner_id="owner-a")
     assert completed.status == "completed"
     assert completed.best_agent_version_id is not None
-    assert completed.promotion_decision["promoted"] is False
-    assert completed.promotion_decision["winner"] == "seed"
-    assert completed.promotion_decision["fallback"] is True
+    assert completed.promotion_decision["promoted"] is True
+    assert completed.promotion_decision["winner"] == "optimized"
+    assert completed.promotion_decision.get("fallback") is not True
     assert completed.promotion_decision["deployed_agent_version_id"] == completed.best_agent_version_id
     event_types = [event.type for event in store.list_events(run.id)]
-    assert "verification_rejected" in event_types
+    assert "verification_completed" in event_types
     assert "run_completed" in event_types
     assert "run_failed" not in event_types
     assert store.get_project(project.id, owner_id="owner-a").promoted_agent_version_id == completed.best_agent_version_id

@@ -27,7 +27,6 @@ from clearagent.builds.datasets import (
 from clearagent.builds.admission import (
     MIN_HOLDOUT_PASS_RATE,
     MIN_REQUIRED_BEHAVIOR_PASS_RATE,
-    candidate_is_eligible,
 )
 from clearagent.builds.budgets import BudgetTracker
 from clearagent.store import Store, _now
@@ -705,6 +704,8 @@ def run_improvement_pipeline(
         }
         quality_admission = {
             "selection_rule": "highest_holdout_score",
+            "deployment_gate": "optimized_score_strictly_greater_than_seed",
+            "thresholds_enforced": False,
             "thresholds": {
                 "min_holdout_pass_rate": MIN_HOLDOUT_PASS_RATE,
                 "min_required_behavior_pass_rate": MIN_REQUIRED_BEHAVIOR_PASS_RATE,
@@ -731,71 +732,10 @@ def run_improvement_pipeline(
             },
         }
         eligibility = {
-            "seed": candidate_is_eligible(seed_test),
-            "optimized": candidate_is_eligible(optimized_test) if optimizer_improved else False,
-            "incumbent": candidate_is_eligible(incumbent_test) if incumbent_test else False,
+            "seed": True,
+            "optimized": optimizer_improved,
+            "incumbent": incumbent_test is not None,
         }
-        if not any(eligibility.values()):
-            fallback_id = incumbent_id or seed_version_id
-            fallback_kind = "incumbent" if incumbent_id else "seed"
-            rejected_decision = {
-                "promoted": False,
-                "winner": fallback_kind,
-                "fallback": True,
-                "optimizer_accepted": optimizer_improved,
-                "reason": (
-                    "No candidate cleared quality admission; the existing agent remains available."
-                    if incumbent_id
-                    else "No candidate cleared quality admission; the original seed is available as an explicitly below-gate fallback."
-                ),
-                "deployed_agent_version_id": fallback_id,
-                "baseline_score": seed_test.score,
-                "optimized_score": optimized_test.score,
-                "incumbent_score": incumbent_test.score if incumbent_test else None,
-                "delta": round(optimized_test.score - seed_test.score, 4),
-                "required_behavior_gates": required_gate_evidence,
-                "quality_admission": quality_admission,
-            }
-            store.update_run(
-                run_id,
-                baseline_test_score=seed_test.score,
-                optimized_test_score=optimized_test.score,
-                promotion_decision=rejected_decision,
-            )
-            _event(
-                store,
-                run_id,
-                "verification_rejected",
-                "hidden_test_evaluation",
-                "No agent version cleared quality admission.",
-                rejected_decision,
-            )
-            _ensure_run_active(store, run_id)
-            if incumbent_id is None:
-                store.promote_version(
-                    project_id=run.project_id,
-                    owner_id=run.owner_id,
-                    version_id=seed_version_id,
-                )
-            store.update_run(
-                run_id,
-                status="completed",
-                stage="completed",
-                progress=1.0,
-                best_agent_version_id=fallback_id,
-                baseline_test_score=seed_test.score,
-                optimized_test_score=optimized_test.score,
-                promotion_decision=rejected_decision,
-                completed_at=_now(),
-            )
-            _event(
-                store,
-                run_id,
-                "run_completed",
-                "completed",
-                _run_completed_message(rejected_decision),
-            )
-            return
         winner_id, winner_kind, winner_score = _select_deployment(
             seed=(
                 seed_version_id,
@@ -1878,8 +1818,6 @@ def _model_purpose(call_kind: str) -> str:
 
 
 def _run_completed_message(decision: dict[str, Any]) -> str:
-    if decision.get("fallback"):
-        return "No candidate cleared quality admission; a below-gate fallback is available to try."
     if decision["winner"] != "seed":
         return "Agent is ready."
     if not decision.get("optimizer_accepted", True):
