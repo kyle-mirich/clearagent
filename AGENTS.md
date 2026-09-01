@@ -11,7 +11,7 @@ schemas and hosted configuration. Preserve the top-level consumer imports.
 
 ## Setup
 
-Use Python 3.14 and `uv`:
+Use Python 3.11 or newer and `uv`:
 
 ```bash
 uv sync --locked --dev

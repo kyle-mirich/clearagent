@@ -43,3 +43,26 @@ jobs:
           uv run --isolated --no-project --directory "$(mktemp -d)" --python 3.14
           --with "$GITHUB_WORKSPACE/dist/clearagent-0.1.0-py3-none-any.whl"
           python "$GITHUB_WORKSPACE/scripts/smoke_package.py"
+
+  compatibility:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --locked --dev
+      - run: uv run ruff check src tests
+      - run: uv run python -m mypy src
+      - run: uv run pytest -q
+      - run: uv build
+      - name: Verify installed engine wheel outside checkout
+        run: >-
+          uv run --isolated --no-project --directory "$(mktemp -d)" --python ${{ matrix.python-version }}
+          --with "$GITHUB_WORKSPACE/dist/clearagent-0.1.0-py3-none-any.whl"
+          python "$GITHUB_WORKSPACE/scripts/smoke_package.py"

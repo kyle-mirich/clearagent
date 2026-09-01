@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 - Unreleased
+## 0.1.0 - 2026-08-31
 
 - Rebuilt the public repository around the LangGraph agent runtime.
 - Added native GEPA prompt optimization with train, validation, and holdout

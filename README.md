@@ -26,29 +26,38 @@ small generic FastAPI surface and a Python/CLI interface for the engine itself.
 
 ## Quick start
 
-Use Python 3.14 and `uv`:
+### What
 
-From another project, install this engine as a dependency. Pin a full commit
-SHA, the way Studio does, so builds stay reproducible:
+ClearAgent is a Python 3.11+ engine for building an agent from a goal, testing
+it, improving its instructions, and keeping the best version.
+
+Install the first GitHub release with `uv`:
 
 ```bash
-uv add "clearagent @ git+https://github.com/kyle-mirich/clearagent.git@<full commit sha>"
+uv add "clearagent @ git+https://github.com/kyle-mirich/clearagent.git@v0.1.0"
 ```
 
-An unpinned install tracks the default branch and will change under you:
+### Why
+
+The `v0.1.0` tag keeps the install reproducible and avoids the unrelated
+package currently using the `clearagent` name on PyPI. ClearAgent is alpha, so
+install a release tag or a full commit SHA instead of tracking `main`.
+
+### How
+
+Run a complete offline build—no API key or provider account required:
 
 ```bash
-uv add "clearagent @ git+https://github.com/kyle-mirich/clearagent.git"
-```
-
-For contributors in this checkout:
-
-```bash
-uv sync --locked --dev
 uv run clearagent build \
   "Build a release notes summarizer for changelog entries." \
   --deterministic \
   --export prompt.md
+```
+
+To contribute from this checkout:
+
+```bash
+uv sync --locked --dev
 ```
 
 The Python API exposes the same build engine:

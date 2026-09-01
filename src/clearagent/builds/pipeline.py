@@ -8,7 +8,7 @@ import json
 import re
 import threading
 import time
-from typing import Any, Literal
+from typing import Any, Literal, TypeVar
 
 from jsonschema import Draft202012Validator
 from pydantic import BaseModel, Field, ValidationError, model_validator
@@ -51,6 +51,9 @@ from clearagent.runtime.contracts import (
     clean_runtime_instruction,
 )
 from clearagent.runtime.types import RunResult
+
+
+StructuredModelT = TypeVar("StructuredModelT", bound=BaseModel)
 
 
 @dataclass(frozen=True)
@@ -1868,14 +1871,14 @@ def _safe_pipeline_error(exc: Exception) -> str:
     return " ".join(str(exc).split())[:1000]
 
 
-def _complete_structured[T: BaseModel](
+def _complete_structured(
     model_uri: str,
     settings: PipelineSettings,
     messages: list[Message],
-    response_model: type[T],
+    response_model: type[StructuredModelT],
     *,
     max_tokens: int | None = None,
-) -> T:
+) -> StructuredModelT:
     request_messages = list(messages)
     token_limit = settings.gepa_max_tokens if max_tokens is None else max_tokens
     for attempt in range(3):
