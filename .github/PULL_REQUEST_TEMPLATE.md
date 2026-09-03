@@ -8,7 +8,10 @@
 
 ## Verification
 
-- [ ] `./scripts/check.sh`
+- [ ] `uv run ruff check src tests`
+- [ ] `uv run python -m mypy src`
+- [ ] `uv run pytest -q`
+- [ ] `uv build`
 - [ ] Tests would detect the previous or broken behavior
 - [ ] Success and relevant failure, boundary, and persisted-state paths are covered
 - [ ] Bug fixes include an exact regression test, or this is not a bug fix
@@ -20,5 +23,5 @@
 ## Docs
 
 - [ ] Updated docs, or no docs change needed
-- [ ] Checked `docs/site.md` for new concepts or workflows
+- [ ] Checked `README.md` and `docs/architecture.md` for new concepts or workflows
 - [ ] Public commands and examples affected by this change are executable and tested
