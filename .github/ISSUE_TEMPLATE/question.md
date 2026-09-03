@@ -8,7 +8,7 @@ assignees: ""
 
 ## What Are You Trying To Do?
 
-Describe the agent, trace, eval, provider, or local chat workflow you are trying
+Describe the agent, trace, eval, provider, or local invoke workflow you are trying
 to use.
 
 ## What Have You Tried?
