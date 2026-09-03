@@ -1,0 +1,91 @@
+[project]
+name = "clearagent"
+version = "0.1.0"
+description = "Eval-first agents on LangGraph: plan, test, auto-optimize, and promote from one goal."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [
+  { name = "ClearAgent contributors" },
+]
+keywords = ["agents", "evals", "llm", "langgraph", "gepa"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+  "pydantic>=2.0",
+  "pydantic-settings>=2.0",
+  "httpx>=0.27",
+  "jsonschema>=4.0",
+  "fastapi>=0.120",
+  "uvicorn>=0.30",
+  "typer>=0.12",
+  "rich>=13.0",
+  "psycopg[binary]>=3.2,<4",
+  "gepa>=0.1.1,<0.2",
+  "langgraph>=1.0",
+  "langchain>=1.0",
+  "langchain-core>=1.0",
+  "langchain-openai>=1.0",
+  "langchain-anthropic>=1.0",
+  "langchain-google-genai>=1.0",
+]
+
+[project.scripts]
+clearagent = "clearagent.command:main"
+
+[project.urls]
+Homepage = "https://github.com/kyle-mirich/clearagent"
+Source = "https://github.com/kyle-mirich/clearagent"
+Issues = "https://github.com/kyle-mirich/clearagent/issues"
+
+[dependency-groups]
+dev = [
+  "pytest>=8.0",
+  "pytest-socket>=0.7",
+  "ruff>=0.8",
+  "mypy>=1.13",
+  "mutmut>=3.7,<4",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/clearagent"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "--strict-config --strict-markers --disable-socket --allow-unix-socket"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+
+[tool.mutmut]
+source_paths = ["src/clearagent"]
+only_mutate = [
+  "src/clearagent/builds/admission.py",
+]
+pytest_add_cli_args_test_selection = [
+  "tests/test_scoring.py",
+]
+mutate_only_covered_lines = false
+use_setproctitle = false
+# Python 3.14 uses frozen import frames; mutmut's positive stack-depth filter
+# attempts to resolve those pseudo-paths. Keep the default unlimited stack here.
+max_stack_depth = -1

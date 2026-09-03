@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Usage and support guide
+    url: https://github.com/kyle-mirich/clearagent/blob/main/SUPPORT.md
+    about: Read setup guidance and learn what to include in a question.
+  - name: Security policy
+    url: https://github.com/kyle-mirich/clearagent/blob/main/SECURITY.md
+    about: Report vulnerabilities privately; do not disclose them in an issue.
