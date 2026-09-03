@@ -9,9 +9,10 @@ There is no guaranteed response time.
 
 ## Usage Questions
 
-Start with the [documentation index](docs/site.md), especially
-[Installation](docs/install.md), [Providers](docs/providers.md), and the
-[Reference](docs/reference.md). Search existing issues before opening a
+Start with the [README](README.md) quick start, CLI, and FastAPI sections,
+the [worked example](examples/summarizer.py), and
+[docs/architecture.md](docs/architecture.md) for the module map. Search
+existing issues before opening a
 [usage question](https://github.com/kyle-mirich/clearagent/issues/new/choose) or
 bug report.
 
