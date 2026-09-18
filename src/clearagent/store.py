@@ -8,6 +8,8 @@ import time
 from typing import Any, Iterator
 from uuid import uuid4
 
+from psycopg_pool import ConnectionPool
+
 from clearagent.models import EventRecord, FeedbackKind, FeedbackRecord, ProjectRecord, RunRecord
 
 
@@ -296,17 +298,52 @@ class _Database:
 
 
 class Store:
-    def __init__(self, database_url: str, *, auto_migrate: bool = True):
+    def __init__(
+        self, database_url: str, *, auto_migrate: bool = True, postgres_pool_size: int = 0,
+    ):
+        if postgres_pool_size < 0:
+            raise ValueError("postgres_pool_size must be non-negative")
         self.database_url = database_url
         self.dialect = (
             "postgres" if database_url.startswith(("postgres://", "postgresql://")) else "sqlite"
         )
         self.path = _sqlite_path(database_url) if self.dialect == "sqlite" else None
-        if auto_migrate:
-            self.initialize()
+        self._pool: ConnectionPool | None = None
+        if self.dialect == "postgres" and postgres_pool_size:
+            from psycopg.rows import dict_row
+
+            self._pool = ConnectionPool(
+                database_url,
+                kwargs={"row_factory": dict_row, "connect_timeout": 5},
+                min_size=0,
+                max_size=postgres_pool_size,
+                timeout=5,
+                max_idle=60,
+                check=ConnectionPool.check_connection,
+                open=False,
+            )
+            self._pool.open()
+        try:
+            if auto_migrate:
+                self.initialize()
+        except BaseException:
+            self.close()
+            raise
+
+    def close(self) -> None:
+        """Release an explicitly configured PostgreSQL pool at owner shutdown."""
+        if self._pool is not None:
+            self._pool.close()
 
     @contextmanager
     def connect(self) -> Iterator[_Database]:
+        if self._pool is not None:
+            # The pool context commits/rolls back before returning the connection.
+            # SET LOCAL cannot leak the timeout into the next borrower's session.
+            with self._pool.connection() as pooled_connection:
+                pooled_connection.execute("SET LOCAL statement_timeout = 10000")
+                yield _Database(pooled_connection, dialect=self.dialect)
+            return
         if self.dialect == "sqlite":
             assert self.path is not None
             self.path.parent.mkdir(parents=True, exist_ok=True)
