@@ -1,4 +1,6 @@
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
+import contextvars
 import threading
 
 import pytest
@@ -128,3 +130,74 @@ def test_build_cleanup_preserves_shared_native_sdk_transports(monkeypatch, famil
     pipeline._close_provider(first)
     assert not second_sync.is_closed()
     assert not second_async.is_closed()
+
+
+def test_queued_sync_completion_is_not_started_after_cancel(monkeypatch):
+    occupied = threading.Event()
+    release = threading.Event()
+    built = threading.Event()
+    closed = threading.Event()
+
+    class Provider(FakeProvider):
+        acomplete = None
+
+        def build_request(self, **kwargs):
+            built.set()
+            return super().build_request(**kwargs)
+
+        def close(self):
+            closed.set()
+
+    provider = Provider([ProviderResponse.fake_text("late")])
+    monkeypatch.setattr(pipeline, "provider_for_model", lambda model: provider)
+
+    def occupy():
+        occupied.set()
+        assert release.wait(timeout=5)
+
+    async def cancel():
+        loop = asyncio.get_running_loop()
+        loop.set_default_executor(ThreadPoolExecutor(max_workers=1))
+        first = loop.run_in_executor(None, occupy)
+        while not occupied.is_set():
+            await asyncio.sleep(0.001)
+        task = asyncio.create_task(pipeline._aprovider_completion(
+            "openai:test", pipeline.PipelineSettings(), [Message(role="user", content="question")],
+            max_tokens=10, response_format=None,
+        ))
+        try:
+            while not built.is_set():
+                await asyncio.sleep(0.001)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(task, 1)
+        finally:
+            release.set()
+        await first
+
+    asyncio.run(cancel())
+    assert provider.completed_requests == []
+    assert closed.is_set()
+
+
+def test_owned_thread_completion_preserves_caller_context(monkeypatch):
+    marker = contextvars.ContextVar("offline_lifecycle_marker", default="missing")
+    seen = []
+
+    class Provider(FakeProvider):
+        acomplete = None
+
+        def complete(self, request):
+            seen.append(marker.get())
+            return ProviderResponse.fake_text("done")
+
+    monkeypatch.setattr(pipeline, "provider_for_model", lambda model: Provider())
+    token = marker.set("caller")
+    try:
+        assert asyncio.run(pipeline._aprovider_completion(
+            "openai:test", pipeline.PipelineSettings(), [Message(role="user", content="question")],
+            max_tokens=10, response_format=None,
+        )) == "done"
+    finally:
+        marker.reset(token)
+    assert seen == ["caller"]

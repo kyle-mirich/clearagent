@@ -170,9 +170,17 @@ fail. A failed rollback does not replace the original setup/transaction error.
 Each build completion and tool evaluation owns the provider it constructs and
 invokes its optional `close()` after use. Canceling a sync-only provider's async
 fallback returns promptly, while its real worker keeps the provider open until
-the call finishes. The canceled retry coroutine starts no further attempts;
+the call finishes. A queued worker skips provider IO if cancellation arrives
+before it starts. The canceled retry coroutine starts no further attempts;
 late worker errors are retrieved and cleanup runs once. Existing SDK retries
 inside that worker may still finish and retain their budget reservation.
+
+Before every build provider attempt, execution checks persisted cancellation
+state. This covers task/judge calls, queued evaluation cases, synthetic batches,
+transport retries, blank answers, schema repairs, and instrumented tool calls.
+Cancellation propagates without failing or promoting the run. Already admitted
+in-flight calls and their internal SDK retries can finish; cancellation prevents
+later engine attempts and preserves their consumed/reserved resources.
 
 The OpenAI and Anthropic adapters share native SDK transports between models;
 per-case cleanup does not close those shared clients. Custom closeable providers

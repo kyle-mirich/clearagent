@@ -81,6 +81,7 @@ class PipelineSettings:
     preflight_budget: PreflightBudget | None = None
     tool_registry: Mapping[str, Callable[..., Any]] | None = None
     on_model_call: Callable[[dict[str, Any]], None] | None = None
+    before_provider_call: Callable[[], None] | None = None
 
 
 class _InstrumentedToolProvider:
@@ -100,7 +101,8 @@ class _InstrumentedToolProvider:
     def complete(self, request: Any) -> Any:
         started_at = time.perf_counter()
         response = _complete_with_retry(
-            self._provider, request, preflight_budget=self._settings.preflight_budget
+            self._provider, request, preflight_budget=self._settings.preflight_budget,
+            before_provider_call=self._settings.before_provider_call,
         )
         _record_model_call(
             self._settings,
@@ -116,7 +118,8 @@ class _InstrumentedToolProvider:
     async def acomplete(self, request: Any) -> Any:
         started_at = time.perf_counter()
         response = await _acomplete_with_retry(
-            self._provider, request, preflight_budget=self._settings.preflight_budget
+            self._provider, request, preflight_budget=self._settings.preflight_budget,
+            before_provider_call=self._settings.before_provider_call,
         )
         _record_model_call(
             self._settings,
@@ -130,6 +133,8 @@ class _InstrumentedToolProvider:
         return response
 
     def stream_text(self, request: Any) -> Any:
+        if self._settings.before_provider_call is not None:
+            self._settings.before_provider_call()
         if self._settings.preflight_budget is not None:
             self._settings.preflight_budget.reserve(request)
         return self._provider.stream_text(request)
@@ -388,6 +393,12 @@ def run_improvement_pipeline(
         project = store.get_project(run.project_id, owner_id=run.owner_id)
 
         supplied_model_call_recorder = pipeline_settings.on_model_call
+        supplied_call_guard = pipeline_settings.before_provider_call
+
+        def before_provider_call() -> None:
+            _ensure_run_active(store, run_id)
+            if supplied_call_guard is not None:
+                supplied_call_guard()
 
         def record_model_call(payload: dict[str, Any]) -> None:
             if supplied_model_call_recorder:
@@ -406,7 +417,10 @@ def run_improvement_pipeline(
                 payload,
             )
 
-        pipeline_settings = replace(pipeline_settings, on_model_call=record_model_call)
+        pipeline_settings = replace(
+            pipeline_settings, on_model_call=record_model_call,
+            before_provider_call=before_provider_call,
+        )
 
         store.update_run(run_id, status="running", stage="planning", progress=0.05, started_at=_now())
         _event(store, run_id, "stage_started", "planning", "Planning the agent and its judges.")
@@ -1439,7 +1453,7 @@ async def _generate_dataset_live_async(
         async with semaphore:
             try:
                 return batch_index, await generate_batch(batch), None
-            except BuildBudgetExceeded:
+            except (BuildBudgetExceeded, RunCanceled):
                 raise
             except Exception as exc:
                 # One stubborn batch must not sink an otherwise valid build;
@@ -2191,6 +2205,11 @@ class _ThreadedProviderOwner:
 
     def _complete(self, request: Any) -> Any:
         try:
+            with self._lock:
+                if self._closing:
+                    # Cancellation may arrive while this worker is queued.
+                    # Do not begin provider IO after its owner has closed.
+                    raise asyncio.CancelledError
             return self._provider.complete(request)
         finally:
             with self._lock:
@@ -2247,7 +2266,8 @@ def _provider_completion_with_provider(
     for empty_attempt in range(3):
         started_at = time.perf_counter()
         response = _complete_with_retry(
-            provider, request, preflight_budget=settings.preflight_budget
+            provider, request, preflight_budget=settings.preflight_budget,
+            before_provider_call=settings.before_provider_call,
         )
         if response.output_text:
             _record_model_call(
@@ -2307,6 +2327,7 @@ async def _aprovider_completion_with_provider(
         started_at = time.perf_counter()
         response = await _acomplete_with_retry(
             provider, request, preflight_budget=settings.preflight_budget,
+            before_provider_call=settings.before_provider_call,
             sync_complete=sync_complete,
         )
         _record_model_call(
@@ -2421,8 +2442,11 @@ def _estimate_model_cost(
 def _complete_with_retry(
     provider: Any, request: Any, attempts: int = 3, *,
     preflight_budget: PreflightBudget | None = None,
+    before_provider_call: Callable[[], None] | None = None,
 ) -> Any:
     for attempt in range(attempts):
+        if before_provider_call is not None:
+            before_provider_call()
         if preflight_budget is not None:
             preflight_budget.reserve(request)
         try:
@@ -2441,9 +2465,12 @@ def _complete_with_retry(
 async def _acomplete_with_retry(
     provider: Any, request: Any, attempts: int = 3, *,
     preflight_budget: PreflightBudget | None = None,
+    before_provider_call: Callable[[], None] | None = None,
     sync_complete: Callable[[Any], Awaitable[Any]] | None = None,
 ) -> Any:
     for attempt in range(attempts):
+        if before_provider_call is not None:
+            before_provider_call()
         if preflight_budget is not None:
             preflight_budget.reserve(request)
         try:
