@@ -116,3 +116,23 @@ adopters and contributors are not surprised by them.
 - **Payload validators bound schema sizes.** The validators in `models.py`
   reject oversized schemas and tool definitions. The limits themselves are
   generic engine constants.
+
+## Store connection lifecycle
+
+`Store(database_url, postgres_pool_size=0)` preserves direct PostgreSQL
+connections and SQLite behavior. A positive size creates a pool owned by that
+Store, with zero minimum connections and the supplied maximum. The pool uses
+a five-second acquisition timeout, five-second connect timeout, sixty-second
+idle limit, and a health check before borrowing. Limits are per Store, not
+global across processes.
+
+`Store.connect()` commits on success and rolls back failed pooled transactions
+before returning the connection. The ten-second statement timeout uses
+`SET LOCAL`, so it resets at the transaction boundary. Initialization failures
+during schema migration close the pool. Owners must call `Store.close()` at
+shutdown after finishing database work. Closing a pool is idempotent and
+prevents subsequent borrowing. With no pool, `close()` is a no-op.
+
+Pooling requires `psycopg-pool>=3.2,<4`, installed as a runtime dependency. It
+is selected only through the Store constructor; engine Settings and the CLI
+do not enable it. Detailed traces still use `SQLiteTraceStore`.

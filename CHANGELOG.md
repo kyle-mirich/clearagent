@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.1 - 2026-10-01
+
+- Added opt-in bounded PostgreSQL connection pooling to `Store`, with explicit
+  owner shutdown through `close()` and migration failure cleanup.
+- Preserved default direct PostgreSQL connections and SQLite behavior.
+- Added pooling lifecycle integration tests and the `psycopg-pool` dependency.
+- Fixed support links, PR verification commands, and invoke workflow wording.
+- Documented pool ownership and limits; made CI wheel verification independent
+  of the package version.
+
 ## 0.1.0 - 2026-08-31
 
 - Rebuilt the public repository around the LangGraph agent runtime.

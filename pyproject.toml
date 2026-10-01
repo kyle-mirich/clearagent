@@ -1,6 +1,6 @@
 [project]
 name = "clearagent"
-version = "0.1.0"
+version = "0.1.1"
 description = "Eval-first agents on LangGraph: plan, test, auto-optimize, and promote from one goal."
 readme = "README.md"
 requires-python = ">=3.11"
