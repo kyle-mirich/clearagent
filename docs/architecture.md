@@ -181,3 +181,33 @@ fail execution. This lets consumers measure native build planning calls directly
 without trusting planner events copied from client-supplied plans. Fixture
 replay is tagged `usage_source=replay`; recorded token/cost data never becomes
 newly measured provider usage, while simulated budget accounting is preserved.
+
+## Pre-attempt build budget
+
+`PreflightBudget(limits, request_bound)` accepts finite `BudgetLimits` and a
+callback returning `RequestBudget` for the fully built provider request.
+`RequestBudget.max_model_calls` is positive; token and dollar bounds are
+nonnegative. All three are aggregate upper bounds for one provider invocation,
+including every possible internal SDK retry. The callback must include provider
+defaults and any adapter-generated structured schemas missing from the generic
+request body, output limits, input framing, and applicable billing modifiers.
+It runs synchronously outside the reservation lock and may run concurrently;
+callers must provide a thread-safe callback.
+Unknown bounds reject before invocation. Dollar admission uses exact rational
+addition of the supplied decimal values, independent of ambient numeric context.
+
+The guard reserves atomically before every outer sync/async retry; empty-answer
+and JSON-repair loops re-enter it. Instrumented build tool providers reserve for
+completion and streaming. A `Build(..., preflight_budget=guard)` preserves that
+same guard through planning and profile execution. All reservations remain
+charged against admission after success, transport error, timeout, cancellation,
+or unknown usage. Canceled thread-backed calls may continue; their reservations
+remain. No response-driven refunds are inferred. Synthetic generation propagates
+budget rejection and cancels queued tasks rather than degrading coverage.
+
+This guard supplements the separate post-response `BudgetTracker`; it does not
+change default profile policy or generic cost estimates. The post-response
+tracker retains consumed resources even when its limit is crossed. Preflight
+enforcement is conditional on trustworthy caller bounds and covers the lifetime
+of one in-process guard, not provider invoices or durable quotas. Consumers own
+cross-process admission, general runtime/chat calls, and external tool spending.

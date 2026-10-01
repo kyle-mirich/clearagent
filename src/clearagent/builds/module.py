@@ -10,7 +10,7 @@ from clearagent.builds.pipeline import (
     render_run_report,
     run_improvement_pipeline,
 )
-from clearagent.builds.budgets import BUDGET_LIMITS, BudgetTracker
+from clearagent.builds.budgets import BUDGET_LIMITS, BudgetTracker, PreflightBudget
 from clearagent.builds.quality import apply_agent_prd, derive_agent_prd
 from clearagent.builds.task_spec import ToolDefinition
 from clearagent.runtime.contracts import RUNTIME_OUTPUT_SCHEMA
@@ -32,9 +32,11 @@ class Build:
         settings: Settings,
         *,
         tool_registry: Mapping[str, Callable[..., Any]] | None = None,
+        preflight_budget: PreflightBudget | None = None,
     ):
         self._settings = settings
         self._tool_registry = dict(tool_registry or {})
+        self._preflight_budget = preflight_budget
 
     @property
     def pipeline_settings(self) -> PipelineSettings:
@@ -55,6 +57,7 @@ class Build:
             promotion_margin=self._settings.promotion_margin,
             debug=self._settings.debug,
             tool_registry=self._tool_registry,
+            preflight_budget=self._preflight_budget,
         )
 
     def plan(

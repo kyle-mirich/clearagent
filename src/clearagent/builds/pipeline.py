@@ -31,7 +31,7 @@ from clearagent.builds.admission import (
     MIN_HOLDOUT_PASS_RATE,
     MIN_REQUIRED_BEHAVIOR_PASS_RATE,
 )
-from clearagent.builds.budgets import BudgetTracker
+from clearagent.builds.budgets import BuildBudgetExceeded, BudgetTracker, PreflightBudget
 from clearagent.store import Store, _now
 from clearagent.storage.redaction import redact
 from clearagent.builds.scoring import CandidateEvaluation, CaseJudgment
@@ -77,6 +77,7 @@ class PipelineSettings:
     promotion_margin: float = 0.03
     debug: bool = False
     budget_tracker: BudgetTracker | None = None
+    preflight_budget: PreflightBudget | None = None
     tool_registry: Mapping[str, Callable[..., Any]] | None = None
     on_model_call: Callable[[dict[str, Any]], None] | None = None
 
@@ -97,7 +98,9 @@ class _InstrumentedToolProvider:
 
     def complete(self, request: Any) -> Any:
         started_at = time.perf_counter()
-        response = _complete_with_retry(self._provider, request)
+        response = _complete_with_retry(
+            self._provider, request, preflight_budget=self._settings.preflight_budget
+        )
         _record_model_call(
             self._settings,
             model_uri=self._model_uri,
@@ -111,7 +114,9 @@ class _InstrumentedToolProvider:
 
     async def acomplete(self, request: Any) -> Any:
         started_at = time.perf_counter()
-        response = await _acomplete_with_retry(self._provider, request)
+        response = await _acomplete_with_retry(
+            self._provider, request, preflight_budget=self._settings.preflight_budget
+        )
         _record_model_call(
             self._settings,
             model_uri=self._model_uri,
@@ -124,6 +129,8 @@ class _InstrumentedToolProvider:
         return response
 
     def stream_text(self, request: Any) -> Any:
+        if self._settings.preflight_budget is not None:
+            self._settings.preflight_budget.reserve(request)
         return self._provider.stream_text(request)
 
 
@@ -1428,6 +1435,8 @@ async def _generate_dataset_live_async(
         async with semaphore:
             try:
                 return batch_index, await generate_batch(batch), None
+            except BuildBudgetExceeded:
+                raise
             except Exception as exc:
                 # One stubborn batch must not sink an otherwise valid build;
                 # degraded coverage beats a failed run when splits stay usable.
@@ -1438,16 +1447,24 @@ async def _generate_dataset_live_async(
         for index, batch in enumerate(batches)
     ]
     completed_batches = 0
-    for future in asyncio.as_completed(pending):
-        batch_index, batch_result, error = await future
-        generated_by_batch[batch_index] = batch_result
-        completed_batches += 1
-        if error:
-            failed_batches[batch_index] = error
-            if on_batch_failed:
-                on_batch_failed(completed_batches, len(batches), error)
-        elif on_batch_completed:
-            on_batch_completed(completed_batches, len(batches), len(batch_result))
+    try:
+        for future in asyncio.as_completed(pending):
+            batch_index, batch_result, error = await future
+            generated_by_batch[batch_index] = batch_result
+            completed_batches += 1
+            if error:
+                failed_batches[batch_index] = error
+                if on_batch_failed:
+                    on_batch_failed(completed_batches, len(batches), error)
+            elif on_batch_completed:
+                on_batch_completed(completed_batches, len(batches), len(batch_result))
+    finally:
+        # On budget failure/cancellation, stop queued batches and retrieve every
+        # task's result. In-flight provider calls keep their full reservation.
+        for task in pending:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*pending, return_exceptions=True)
     layout["examples"] = [
         example
         for batch in generated_by_batch
@@ -2171,7 +2188,9 @@ def _provider_completion_with_provider(
     )
     for empty_attempt in range(3):
         started_at = time.perf_counter()
-        response = _complete_with_retry(provider, request)
+        response = _complete_with_retry(
+            provider, request, preflight_budget=settings.preflight_budget
+        )
         if response.output_text:
             _record_model_call(
                 settings,
@@ -2227,7 +2246,9 @@ async def _aprovider_completion_with_provider(
     )
     for empty_attempt in range(3):
         started_at = time.perf_counter()
-        response = await _acomplete_with_retry(provider, request)
+        response = await _acomplete_with_retry(
+            provider, request, preflight_budget=settings.preflight_budget
+        )
         _record_model_call(
             settings,
             model_uri=model_uri,
@@ -2337,8 +2358,13 @@ def _estimate_model_cost(
     return round((input_tokens * input_rate + output_tokens * output_rate) / 1_000_000, 6)
 
 
-def _complete_with_retry(provider: Any, request: Any, attempts: int = 3) -> Any:
+def _complete_with_retry(
+    provider: Any, request: Any, attempts: int = 3, *,
+    preflight_budget: PreflightBudget | None = None,
+) -> Any:
     for attempt in range(attempts):
+        if preflight_budget is not None:
+            preflight_budget.reserve(request)
         try:
             return provider.complete(request)
         except ProviderError as exc:
@@ -2352,8 +2378,13 @@ def _complete_with_retry(provider: Any, request: Any, attempts: int = 3) -> Any:
     raise AssertionError("Provider retry loop exited unexpectedly.")
 
 
-async def _acomplete_with_retry(provider: Any, request: Any, attempts: int = 3) -> Any:
+async def _acomplete_with_retry(
+    provider: Any, request: Any, attempts: int = 3, *,
+    preflight_budget: PreflightBudget | None = None,
+) -> Any:
     for attempt in range(attempts):
+        if preflight_budget is not None:
+            preflight_budget.reserve(request)
         try:
             acomplete = getattr(provider, "acomplete", None)
             if callable(acomplete):
