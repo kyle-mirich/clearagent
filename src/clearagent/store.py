@@ -816,7 +816,10 @@ class Store:
             raise KeyError(run_id)
         return _run_record(row)
 
-    def update_run(self, run_id: str, **fields: Any) -> RunRecord:
+    def update_run(
+        self, run_id: str, *, expected_statuses: tuple[str, ...] | None = None, **fields: Any,
+    ) -> RunRecord:
+        """Update fields, optionally only while the row has an expected status."""
         if not fields:
             return self.get_run(run_id)
         column_map = {
@@ -845,8 +848,15 @@ class Store:
             else:
                 values.append(value)
         values.append(run_id)
+        condition = "id=?"
+        if expected_statuses is not None:
+            if expected_statuses:
+                condition += f" AND status IN ({', '.join('?' for _ in expected_statuses)})"
+                values.extend(expected_statuses)
+            else:
+                condition += " AND FALSE"
         with self.connect() as db:
-            db.execute(f"UPDATE runs SET {', '.join(assignments)} WHERE id=?", values)
+            db.execute(f"UPDATE runs SET {', '.join(assignments)} WHERE {condition}", values)
         return self.get_run(run_id)
 
     def add_event(

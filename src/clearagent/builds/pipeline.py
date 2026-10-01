@@ -848,13 +848,18 @@ def run_improvement_pipeline(
     except Exception as exc:
         safe_message = _safe_pipeline_error(exc)
         try:
-            store.update_run(
+            failed = store.update_run(
                 run_id,
+                expected_statuses=("queued", "running"),
                 status="failed",
                 stage="failed",
                 error={"type": exc.__class__.__name__, "message": safe_message},
                 completed_at=_now(),
             )
+            if failed.status != "failed":
+                # A user may cancel while a provider call is still in flight.
+                # Its late failure cannot replace that terminal decision.
+                return
             _event(store, run_id, "run_failed", "failed", f"Run failed: {safe_message}")
         except Exception:
             # Never let failure-path persistence replace the original error.
@@ -1236,18 +1241,36 @@ def _apply_deterministic_judges(
     if not checks:
         return judgment
     actual = judgment.actual_output or {}
-    output = str(actual.get("answer", ""))
-    check_results = run_checks(
-        checks,
-        RunResult(
-            output=output,
-            run_id=None,
-            trace_db_path=None,
-            tool_calls=[],
-            latency_ms=0,
-            structured_output=actual,
-        ),
+    run_result = RunResult(
+        output=str(actual.get("answer", "")),
+        run_id=None,
+        trace_db_path=None,
+        tool_calls=[],
+        latency_ms=0,
+        structured_output=actual,
     )
+
+    def string_values(value: Any) -> list[str]:
+        if isinstance(value, str):
+            return [value]
+        if isinstance(value, dict):
+            return [text for item in value.values() for text in string_values(item)]
+        if isinstance(value, list):
+            return [text for item in value for text in string_values(item)]
+        return []
+
+    # Fixed leakage gates cover the entire response, including custom structured
+    # fields. Other checks retain their existing answer/structured-output semantics.
+    leakage_result = run_result.model_copy(update={"output": "\n".join(string_values(actual))})
+    check_results = [
+        run_checks(
+            [check],
+            leakage_result
+            if check.get("not_contains") in ("system prompt", "hidden instructions")
+            else run_result,
+        )[0]
+        for check in checks
+    ]
     failures = [f"check_{result.name}" for result in check_results if not result.passed]
     check_summary = "; ".join(
         f"{result.name}={'pass' if result.passed else 'fail'}" for result in check_results
@@ -1453,30 +1476,8 @@ async def _generate_dataset_live_async(
         "max_concurrency": concurrency,
         "async_generation": True,
     }
-    _disambiguate_duplicate_examples(layout["examples"])
     validate_synthetic_dataset(layout)
     return layout
-
-
-def _disambiguate_duplicate_examples(examples: list[dict[str, Any]]) -> None:
-    seen: set[str] = set()
-    for example in examples:
-        signature = json.dumps([example.get("input"), example.get("expected")], sort_keys=True)
-        if signature not in seen:
-            seen.add(signature)
-            continue
-        input_payload = example.get("input")
-        if not isinstance(input_payload, dict):
-            continue
-        text_field = next((key for key, value in input_payload.items() if isinstance(value, str)), None)
-        if text_field is None:
-            continue
-        context = " ".join(
-            str(example.get(key, "")).replace("_", " ").strip()
-            for key in ("category", "difficulty", "id")
-        ).strip()
-        input_payload[text_field] = f"{input_payload[text_field]}\n\nScenario context: {context}."
-        seen.add(json.dumps([input_payload, example.get("expected")], sort_keys=True))
 
 
 def _normalize_generated_checks(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
