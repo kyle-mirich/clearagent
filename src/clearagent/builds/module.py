@@ -144,9 +144,14 @@ class Build:
             }
         )
 
-    def execute(self, store: Store, run_id: str) -> None:
+    def execute(
+        self, store: Store, run_id: str, *,
+        on_model_call: Callable[[dict[str, Any]], None] | None = None,
+    ) -> None:
         run = store.get_run(run_id)
         run_settings = self.pipeline_settings_for(run.budget_profile)
+        if on_model_call is not None:
+            run_settings = replace(run_settings, on_model_call=on_model_call)
         run_improvement_pipeline(store, run_id, run_settings)
 
     def pipeline_settings_for(self, budget_profile: str) -> PipelineSettings:

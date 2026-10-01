@@ -6,6 +6,7 @@ from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, replace
 import json
+import os
 import re
 import threading
 import time
@@ -2253,6 +2254,7 @@ def _record_model_call(
     purpose: str,
 ) -> None:
     usage = response.usage
+    replay = os.environ.get("CLEARAGENT_OPENAI_FIXTURE_MODE") == "replay"
     input_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
     output_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
     total_tokens = int(getattr(usage, "total_tokens", input_tokens + output_tokens) or input_tokens + output_tokens)
@@ -2266,13 +2268,14 @@ def _record_model_call(
         recorder(
             {
                 "call_id": uuid4().hex,
-                "usage_known": usage is not None and (
+                "usage_source": "replay" if replay else "provider",
+                "usage_known": not replay and usage is not None and (
                     not isinstance(getattr(response, "raw", None), dict)
                     or response.raw.get("usage_known", True) is True
                 ),
                 # Product reporting must not present budget fallback prices as
                 # measured spend. Preserve the existing budget fields separately.
-                "reported_cost_usd": _reported_model_cost(response),
+                "reported_cost_usd": None if replay else _reported_model_cost(response),
                 "purpose": purpose,
                 "model_uri": model_uri,
                 "model": str(getattr(response, "model", "") or model_uri),

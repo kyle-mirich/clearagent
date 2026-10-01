@@ -70,3 +70,29 @@ def test_langchain_provider_usage_provenance_reaches_build_events(metadata, expe
     assert (payload["input_tokens"] if payload["usage_known"] else None) == expected
     assert payload["reported_cost_usd"] == 0.002
     assert "private output" not in repr(payload)
+
+
+def test_replayed_usage_is_never_a_new_provider_charge(monkeypatch):
+    monkeypatch.setenv("CLEARAGENT_OPENAI_FIXTURE_MODE", "replay")
+    events = []
+    _record_model_call(PipelineSettings(on_model_call=events.append), model_uri="openai:test",
+                       response=SimpleNamespace(usage=Usage(prompt_tokens=100, completion_tokens=10),
+                                                raw={"usage": {"cost": 2}}),
+                       request_messages=[], latency_ms=1, max_tokens=1, purpose="task")
+    assert events[0]["usage_source"] == "replay"
+    assert events[0]["usage_known"] is False
+    assert events[0]["reported_cost_usd"] is None
+
+
+def test_build_execute_exposes_the_existing_model_observer_seam(monkeypatch):
+    from clearagent.builds import Build
+    from clearagent.config import Settings
+    captured = []
+    def execute(store, run_id, settings):
+        assert run_id == "run-test"
+        assert settings.budget_tracker is not None
+        settings.on_model_call({"call_id": "one"})
+    monkeypatch.setattr("clearagent.builds.module.run_improvement_pipeline", execute)
+    store = SimpleNamespace(get_run=lambda _: SimpleNamespace(budget_profile="quick"))
+    Build(Settings(_env_file=None)).execute(store, "run-test", on_model_call=captured.append)
+    assert captured == [{"call_id": "one"}]
