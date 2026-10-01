@@ -136,3 +136,16 @@ prevents subsequent borrowing. With no pool, `close()` is a no-op.
 Pooling requires `psycopg-pool>=3.2,<4`, installed as a runtime dependency. It
 is selected only through the Store constructor; engine Settings and the CLI
 do not enable it. Detailed traces still use `SQLiteTraceStore`.
+
+## Model-call usage provenance
+
+Build `model_call_completed` events include a unique `call_id`, `usage_known`, and
+nullable `reported_cost_usd`. The ID follows a completed logical provider call;
+separate empty-answer attempts receive separate IDs. Consumers can deduplicate
+an event copied or delivered more than once. `usage_known=false` means legacy
+numeric token defaults are not measured usage. `reported_cost_usd` is populated
+only from a finite, nonnegative numeric provider `cost`/`total_cost`; it remains
+unknown when absent. Existing `estimated_cost_usd` values serve budget accounting
+and may use fallback prices, so consumers must not call them measured spend.
+The callback remains best effort. Failed transport attempts that produce no
+completion response are outside this event's coverage.
