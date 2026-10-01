@@ -459,7 +459,7 @@ def build_langchain_chat_model(
             "use_responses_api": True,
             "store": False,
         }
-        if model.startswith("gpt-5.6"):
+        if model.startswith("gpt-5.6") or model == "gpt-6-luna":
             kwargs["reasoning_effort"] = "none"
         return ChatOpenAI(**kwargs)
     if provider == "anthropic":

@@ -15,15 +15,15 @@ class Settings(BaseSettings):
 
     deterministic_mode: bool = Field(default=False, alias="CLEARAGENT_DETERMINISTIC_MODE")
 
-    planner_model: str = Field(default="openai:gpt-5.6-luna", alias="CLEARAGENT_PLANNER_MODEL")
+    planner_model: str = Field(default="openai:gpt-6-luna", alias="CLEARAGENT_PLANNER_MODEL")
 
-    synthetic_model: str = Field(default="openai:gpt-5.6-luna", alias="CLEARAGENT_SYNTHETIC_MODEL")
+    synthetic_model: str = Field(default="openai:gpt-6-luna", alias="CLEARAGENT_SYNTHETIC_MODEL")
 
-    task_model: str = Field(default="openai:gpt-5.6-luna", alias="CLEARAGENT_TASK_MODEL")
+    task_model: str = Field(default="openai:gpt-6-luna", alias="CLEARAGENT_TASK_MODEL")
 
-    judge_model: str = Field(default="openai:gpt-5.6-luna", alias="CLEARAGENT_JUDGE_MODEL")
+    judge_model: str = Field(default="openai:gpt-6-luna", alias="CLEARAGENT_JUDGE_MODEL")
 
-    reflection_model: str = Field(default="openai:gpt-5.6-luna", alias="CLEARAGENT_REFLECTION_MODEL")
+    reflection_model: str = Field(default="openai:gpt-6-luna", alias="CLEARAGENT_REFLECTION_MODEL")
 
     openrouter_api_key: str | None = Field(default=None, alias="OPENROUTER_API_KEY")
 

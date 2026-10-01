@@ -76,6 +76,12 @@ regenerate the lockfile, and re-verify.
 
 ## Quality sequence
 
+The five generation/evaluation roles default to `openai:gpt-6-luna`; explicit
+settings and environment model overrides are preserved. The OpenAI provider
+sets reasoning effort to `none` for GPT-6 Luna so sampling parameters and
+function tools retain their supported behavior. Other model families keep their
+own reasoning defaults.
+
 The engine's important quality sequence is:
 
 ```text

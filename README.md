@@ -74,6 +74,11 @@ See [examples/summarizer.py](examples/summarizer.py) for a complete local run.
 
 ## CLI
 
+Planning, synthetic generation, task execution, judging, and reflection default
+to `openai:gpt-6-luna`. Each role remains configurable through its
+`CLEARAGENT_*_MODEL` environment variable. Direct GPT-6 Luna requests use
+`reasoning_effort="none"` with the Responses API.
+
 ```bash
 clearagent build "What the agent should do" [--level quick|standard|deep]
 clearagent eval "The goal" --instruction "The prompt to score"
