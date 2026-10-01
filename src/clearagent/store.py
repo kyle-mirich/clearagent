@@ -348,13 +348,6 @@ class Store:
             assert self.path is not None
             self.path.parent.mkdir(parents=True, exist_ok=True)
             connection: Any = sqlite3.connect(self.path)
-            connection.row_factory = sqlite3.Row
-            connection.execute("PRAGMA foreign_keys = ON")
-            # Concurrent API requests and pipeline event writers share this
-            # database; without a busy timeout they fail fast with
-            # "database is locked" instead of waiting their turn.
-            connection.execute("PRAGMA busy_timeout = 5000")
-            connection.execute("PRAGMA journal_mode = WAL")
         else:
             from psycopg import connect
             from psycopg.rows import dict_row
@@ -364,16 +357,27 @@ class Store:
                 row_factory=dict_row,
                 connect_timeout=5,
             )
-            # Configure the timeout after connecting. Pooled providers such as
-            # Neon reject arbitrary PostgreSQL startup ``options``, while a
-            # transaction-local setting works with both pooled and direct
-            # endpoints and is reset automatically after this unit of work.
-            connection.execute("SET LOCAL statement_timeout = 10000")
         try:
+            if self.dialect == "sqlite":
+                connection.row_factory = sqlite3.Row
+                connection.execute("PRAGMA foreign_keys = ON")
+                # Concurrent API requests and pipeline event writers share this
+                # database; wait for their transactions instead of failing fast.
+                connection.execute("PRAGMA busy_timeout = 5000")
+                connection.execute("PRAGMA journal_mode = WAL")
+            else:
+                # Configure after connecting: pooled endpoints may reject
+                # startup options. Setup failures still belong to this owner.
+                connection.execute("SET LOCAL statement_timeout = 10000")
             yield _Database(connection, dialect=self.dialect)
             connection.commit()
         except Exception:
-            connection.rollback()
+            try:
+                connection.rollback()
+            except Exception:
+                # A broken connection can also reject rollback. Preserve the
+                # original setup/transaction error and still close below.
+                pass
             raise
         finally:
             connection.close()
