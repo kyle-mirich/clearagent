@@ -505,11 +505,9 @@ def _request_model_name(model_uri: str) -> str:
 def _apply_structured_output(
     response: ProviderResponse, response_format: ResponseFormat | None
 ) -> None:
-    if response_format is None:
+    if response_format is None or response.tool_calls:
         return
     if response.output_text is None:
-        if response.tool_calls:
-            return
         raise ValueError(
             f"structured output response did not include text for {response_format.name!r}."
         )

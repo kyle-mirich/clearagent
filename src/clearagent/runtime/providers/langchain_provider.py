@@ -1,8 +1,9 @@
 import hashlib
 import json
+import math
 import os
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +24,6 @@ from clearagent.runtime.providers.base import (
     ProviderError,
     ProviderRequest,
     ProviderResponse,
-    ResponseFormat,
     ResponseFormatInput,
     ToolCall,
     Usage,
@@ -131,8 +131,13 @@ class LangchainChatProvider:
         return response
 
     def stream_text(self, request: ProviderRequest):
-        chat = self.chat_model
+        if request.response_format is not None and not self._native_json_schema:
+            response = self.complete(request)
+            if response.output_text:
+                yield response.output_text
+            return
         try:
+            chat = self._configured_chat(request)
             for chunk in chat.stream(_to_langchain_messages(request.body["messages"])):
                 text = _chunk_text(chunk)
                 if text:
@@ -163,12 +168,12 @@ class LangchainChatProvider:
     def _configured_chat(self, request: ProviderRequest) -> Runnable:
         body = request.body
         chat: Runnable = self.chat_model
-        bindings: dict[str, Any] = {}
+        bindings = self._request_bindings(request)
         if body.get("tools"):
-            bindings["tools"] = body["tools"]
-            if body.get("tool_choice") is not None:
-                bindings["tool_choice"] = _bindable_tool_choice(body["tool_choice"], body["tools"])
-        elif request.response_format is not None:
+            chat = self.chat_model.bind_tools(
+                body["tools"], tool_choice=_bindable_tool_choice(body.get("tool_choice"))
+            )
+        if request.response_format is not None:
             bindings["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {
@@ -177,49 +182,90 @@ class LangchainChatProvider:
                     "schema": _harden_json_schema(request.response_format.json_schema),
                 },
             }
-        if body.get("temperature") is not None:
-            bindings["temperature"] = body["temperature"]
         if bindings:
             chat = chat.bind(**bindings)
         return chat
 
-    def _complete_via_function_calling(self, request: ProviderRequest) -> ProviderResponse:
-        response_format: ResponseFormat | None = request.response_format
+    def _request_bindings(self, request: ProviderRequest) -> dict[str, Any]:
+        # Request snapshots use a common OpenAI-style shape. Translate only
+        # provider-specific options; standard generation kwargs pass through.
+        reserved = {"model", "messages", "tools", "tool_choice", "response_format", "stream"}
+        bindings = {
+            key: value
+            for key, value in request.body.items()
+            if key not in reserved and value is not None
+        }
+        if self.provider_name == "google" and "max_tokens" in bindings:
+            bindings.setdefault("max_output_tokens", bindings.pop("max_tokens"))
+        if self.provider_name == "openrouter":
+            extra_body = dict(bindings.pop("extra_body", {}) or {})
+            for key in ("provider", "reasoning"):
+                if key in bindings:
+                    extra_body[key] = bindings.pop(key)
+            if extra_body:
+                bindings["extra_body"] = extra_body
+        return bindings
+
+    def _structured_chat(self, request: ProviderRequest) -> Runnable:
+        response_format = request.response_format
         assert response_format is not None
-        structured = self.chat_model.with_structured_output(
-            response_format.json_schema, method="function_calling"
-        )
-        try:
-            parsed = structured.invoke(_to_langchain_messages(request.body["messages"]))
-        except Exception as exc:
-            raise provider_error(request, f"{_exc_type(exc)}: {exc}") from exc
-        text = json.dumps(parsed, default=str)
-        return ProviderResponse(
-            provider=self.provider_name,
-            model=request.model,
-            raw={"structured_output": parsed},
-            output_text=text,
-            usage=_usage_of(None),
-            finish_reason="stop",
+        # include_raw wraps the model in a parallel runnable that does not
+        # forward invocation kwargs. Configure a per-request model copy before
+        # building that wrapper so concurrent requests retain their own options.
+        fields = type(self.chat_model).model_fields
+        updates: dict[str, Any] = {}
+        extra: dict[str, Any] = {}
+        for key, value in self._request_bindings(request).items():
+            field_name = key if key in fields else next(
+                (name for name, field in fields.items() if field.alias == key), None
+            )
+            if field_name is not None:
+                updates[field_name] = value
+            else:
+                extra[key] = value
+        if extra:
+            if "model_kwargs" not in fields:
+                raise ValueError(f"Unsupported structured output options: {', '.join(extra)}")
+            updates["model_kwargs"] = {
+                **getattr(self.chat_model, "model_kwargs", {}),
+                **extra,
+            }
+        chat = self.chat_model.model_copy(update=updates)
+        schema = dict(response_format.json_schema)
+        schema.setdefault("title", response_format.name)
+        return chat.with_structured_output(
+            schema, method="function_calling", include_raw=True
         )
 
-    async def _acomplete_via_function_calling(self, request: ProviderRequest) -> ProviderResponse:
-        response_format: ResponseFormat | None = request.response_format
-        assert response_format is not None
-        structured = self.chat_model.with_structured_output(
-            response_format.json_schema, method="function_calling"
-        )
+    def _complete_via_function_calling(self, request: ProviderRequest) -> ProviderResponse:
         try:
-            parsed = await structured.ainvoke(_to_langchain_messages(request.body["messages"]))
+            result = self._structured_chat(request).invoke(
+                _to_langchain_messages(request.body["messages"])
+            )
+            return self._structured_response(request, result)
         except Exception as exc:
             raise provider_error(request, f"{_exc_type(exc)}: {exc}") from exc
-        text = json.dumps(parsed, default=str)
+
+    async def _acomplete_via_function_calling(self, request: ProviderRequest) -> ProviderResponse:
+        try:
+            result = await self._structured_chat(request).ainvoke(
+                _to_langchain_messages(request.body["messages"])
+            )
+            return self._structured_response(request, result)
+        except Exception as exc:
+            raise provider_error(request, f"{_exc_type(exc)}: {exc}") from exc
+
+    def _structured_response(self, request: ProviderRequest, result: Any) -> ProviderResponse:
+        if error := result.get("parsing_error"):
+            raise error
+        parsed = result["parsed"]
+        usage = _usage_of(result["raw"])
         return ProviderResponse(
             provider=self.provider_name,
             model=request.model,
-            raw={"structured_output": parsed},
-            output_text=text,
-            usage=_usage_of(None),
+            raw={"structured_output": parsed, **_raw_usage(result["raw"], usage)},
+            output_text=json.dumps(parsed, default=str),
+            usage=usage,
             finish_reason="stop",
         )
 
@@ -248,12 +294,15 @@ def _exc_type(exc: Exception) -> str:
     return exc.__class__.__name__
 
 
-def _bindable_tool_choice(tool_choice: Any, tools: Sequence[Any]) -> Any:
-    # OpenAI-style {"type": "function", "function": {"name": ...}} forcing maps
-    # to LangChain's provider-agnostic "any" semantics; named selection is
-    # handled natively where supported.
+def _bindable_tool_choice(tool_choice: Any) -> Any:
+    # A name lets each model's bind_tools translate forced selection into its
+    # native wire format without broadening the choice to an arbitrary tool.
     if isinstance(tool_choice, dict):
-        return "any"
+        function = tool_choice.get("function")
+        if isinstance(function, dict) and function.get("name"):
+            return function["name"]
+        if tool_choice.get("type") == "tool" and tool_choice.get("name"):
+            return tool_choice["name"]
     return tool_choice
 
 
@@ -262,10 +311,14 @@ def _to_langchain_messages(dump: list[dict[str, Any]]) -> list[Any]:
     for item in dump:
         role = item.get("role")
         content = item.get("content")
+        if content is None:
+            content = ""
+        elif not isinstance(content, (str, list)):
+            content = str(content)
         if role == "system":
-            messages.append(SystemMessage(content=str(content or "")))
+            messages.append(SystemMessage(content=content))
         elif role == "user":
-            messages.append(HumanMessage(content=str(content or "")))
+            messages.append(HumanMessage(content=content))
         elif role == "assistant":
             tool_calls = []
             for call in item.get("tool_calls", []):
@@ -282,13 +335,15 @@ def _to_langchain_messages(dump: list[dict[str, Any]]) -> list[Any]:
                         "type": "tool_call",
                     }
                 )
-            messages.append(AIMessage(content=str(content) if content else "", tool_calls=tool_calls))
+            messages.append(AIMessage(content=content, tool_calls=tool_calls))
         elif role == "tool":
-            messages.append(ToolMessage(content=str(content or ""), tool_call_id=item.get("tool_call_id", "")))
+            messages.append(ToolMessage(content=content, tool_call_id=item.get("tool_call_id", "")))
     return messages
 
 
 def _to_provider_response(request: ProviderRequest, result: Any) -> ProviderResponse:
+    if getattr(result, "invalid_tool_calls", None):
+        raise provider_error(request, "model returned malformed tool calls.")
     content = result.content
     if isinstance(content, list):
         content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
@@ -296,26 +351,61 @@ def _to_provider_response(request: ProviderRequest, result: Any) -> ProviderResp
         ToolCall(id=call.get("id", ""), name=call.get("name", ""), arguments=dict(call.get("args") or {}))
         for call in getattr(result, "tool_calls", []) or []
     ]
+    metadata = getattr(result, "response_metadata", None)
+    finish_reason = metadata.get("finish_reason") if isinstance(metadata, Mapping) else None
+    usage = _usage_of(result)
     return ProviderResponse(
         provider=request.provider,
         model=request.model,
-        raw={"finish_reason": (getattr(result, "response_metadata", {}) or {}).get("finish_reason")},
+        raw={"finish_reason": finish_reason, **_raw_usage(result, usage)},
         output_text=str(content) if content else None,
         tool_calls=tool_calls,
-        usage=_usage_of(result),
-        finish_reason=(getattr(result, "response_metadata", {}) or {}).get("finish_reason")
-        or ("tool_calls" if tool_calls else "stop"),
+        usage=usage,
+        finish_reason=finish_reason or ("tool_calls" if tool_calls else "stop"),
     )
 
 
 def _usage_of(result: Any) -> Usage | None:
-    metadata = getattr(result, "usage_metadata", None) or {}
-    if not metadata:
-        return Usage()
-    prompt = int(metadata.get("input_tokens", 0) or 0)
-    completion = int(metadata.get("output_tokens", 0) or 0)
-    total = int(metadata.get("total_tokens", 0) or prompt + completion)
+    metadata = getattr(result, "usage_metadata", None)
+    if not isinstance(metadata, Mapping):
+        return None
+    prompt = metadata.get("input_tokens")
+    completion = metadata.get("output_tokens")
+    if any(
+        not isinstance(value, int) or isinstance(value, bool) or value < 0
+        for value in (prompt, completion)
+    ):
+        return None
+    assert isinstance(prompt, int) and isinstance(completion, int)
+    total = metadata.get("total_tokens", prompt + completion)
+    if not isinstance(total, int) or isinstance(total, bool) or total != prompt + completion:
+        return None
     return Usage(prompt_tokens=prompt, completion_tokens=completion, total_tokens=total)
+
+
+def _raw_usage(result: Any, usage: Usage | None) -> dict[str, Any]:
+    raw: dict[str, Any] = {"usage_known": usage is not None}
+    response_metadata = getattr(result, "response_metadata", None)
+    sources = [getattr(result, "usage_metadata", None)]
+    if isinstance(response_metadata, Mapping):
+        sources.extend(response_metadata.get(key) for key in ("usage", "token_usage"))
+    costs: dict[str, float] = {}
+    for source in sources:
+        if not isinstance(source, Mapping):
+            continue
+        for key in ("cost", "total_cost"):
+            value = source.get(key)
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+                continue
+            try:
+                amount = float(value)
+            except OverflowError:
+                continue
+            if math.isfinite(amount):
+                costs.setdefault(key, amount)
+    if costs:
+        raw["usage"] = costs
+    return raw
 
 
 def _chunk_text(chunk: Any) -> str:
