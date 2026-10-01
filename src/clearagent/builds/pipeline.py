@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 from collections import Counter
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import contextvars
 from dataclasses import dataclass, replace
 import json
 import os
@@ -31,7 +32,7 @@ from clearagent.builds.admission import (
     MIN_HOLDOUT_PASS_RATE,
     MIN_REQUIRED_BEHAVIOR_PASS_RATE,
 )
-from clearagent.builds.budgets import BudgetTracker
+from clearagent.builds.budgets import BuildBudgetExceeded, BudgetTracker, PreflightBudget
 from clearagent.store import Store, _now
 from clearagent.storage.redaction import redact
 from clearagent.builds.scoring import CandidateEvaluation, CaseJudgment
@@ -77,8 +78,10 @@ class PipelineSettings:
     promotion_margin: float = 0.03
     debug: bool = False
     budget_tracker: BudgetTracker | None = None
+    preflight_budget: PreflightBudget | None = None
     tool_registry: Mapping[str, Callable[..., Any]] | None = None
     on_model_call: Callable[[dict[str, Any]], None] | None = None
+    before_provider_call: Callable[[], None] | None = None
 
 
 class _InstrumentedToolProvider:
@@ -97,7 +100,10 @@ class _InstrumentedToolProvider:
 
     def complete(self, request: Any) -> Any:
         started_at = time.perf_counter()
-        response = _complete_with_retry(self._provider, request)
+        response = _complete_with_retry(
+            self._provider, request, preflight_budget=self._settings.preflight_budget,
+            before_provider_call=self._settings.before_provider_call,
+        )
         _record_model_call(
             self._settings,
             model_uri=self._model_uri,
@@ -111,7 +117,10 @@ class _InstrumentedToolProvider:
 
     async def acomplete(self, request: Any) -> Any:
         started_at = time.perf_counter()
-        response = await _acomplete_with_retry(self._provider, request)
+        response = await _acomplete_with_retry(
+            self._provider, request, preflight_budget=self._settings.preflight_budget,
+            before_provider_call=self._settings.before_provider_call,
+        )
         _record_model_call(
             self._settings,
             model_uri=self._model_uri,
@@ -124,6 +133,10 @@ class _InstrumentedToolProvider:
         return response
 
     def stream_text(self, request: Any) -> Any:
+        if self._settings.before_provider_call is not None:
+            self._settings.before_provider_call()
+        if self._settings.preflight_budget is not None:
+            self._settings.preflight_budget.reserve(request)
         return self._provider.stream_text(request)
 
 
@@ -380,6 +393,12 @@ def run_improvement_pipeline(
         project = store.get_project(run.project_id, owner_id=run.owner_id)
 
         supplied_model_call_recorder = pipeline_settings.on_model_call
+        supplied_call_guard = pipeline_settings.before_provider_call
+
+        def before_provider_call() -> None:
+            _ensure_run_active(store, run_id)
+            if supplied_call_guard is not None:
+                supplied_call_guard()
 
         def record_model_call(payload: dict[str, Any]) -> None:
             if supplied_model_call_recorder:
@@ -398,7 +417,10 @@ def run_improvement_pipeline(
                 payload,
             )
 
-        pipeline_settings = replace(pipeline_settings, on_model_call=record_model_call)
+        pipeline_settings = replace(
+            pipeline_settings, on_model_call=record_model_call,
+            before_provider_call=before_provider_call,
+        )
 
         store.update_run(run_id, status="running", stage="planning", progress=0.05, started_at=_now())
         _event(store, run_id, "stage_started", "planning", "Planning the agent and its judges.")
@@ -848,13 +870,18 @@ def run_improvement_pipeline(
     except Exception as exc:
         safe_message = _safe_pipeline_error(exc)
         try:
-            store.update_run(
+            failed = store.update_run(
                 run_id,
+                expected_statuses=("queued", "running"),
                 status="failed",
                 stage="failed",
                 error={"type": exc.__class__.__name__, "message": safe_message},
                 completed_at=_now(),
             )
+            if failed.status != "failed":
+                # A user may cancel while a provider call is still in flight.
+                # Its late failure cannot replace that terminal decision.
+                return
             _event(store, run_id, "run_failed", "failed", f"Run failed: {safe_message}")
         except Exception:
             # Never let failure-path persistence replace the original error.
@@ -1038,41 +1065,44 @@ def _execute_tool_agent(
     if missing:
         raise RuntimeError(f"Tool agent is missing registered tools: {', '.join(missing)}")
     provider = provider_for_model(settings.task_model)
-    if settings.task_model.startswith("openrouter:") and settings.openrouter_api_key and hasattr(provider, "api_key"):
-        provider.api_key = settings.openrouter_api_key
-    instrumented_provider = _InstrumentedToolProvider(
-        provider,
-        settings,
-        settings.task_model,
-    )
-    tools = [registry[name] for name in required_names]
-    agent = Agent(
-        name=str(task_spec.get("name", "Configured tool agent")),
-        model=settings.task_model,
-        provider=instrumented_provider,
-        system_prompt=(
-            f"{instruction}\n\nRelevant uploaded knowledge:\n{_document_context(task_spec)[:12_000]}"
-        ),
-        tools=tools,
-        trace=False,
-        max_tokens=settings.task_max_tokens,
-        response_format={
-            "name": "AgentOutput",
-            "schema": _provider_compatible_schema(
-                task_spec.get("output_schema", RUNTIME_OUTPUT_SCHEMA)
-            ),
-            "strict": False,
-        },
-    )
-    result = agent.run(str(example["input"]["message"]), trace=False)
-    if isinstance(result.structured_output, dict):
-        _validate_payload(
-            result.structured_output,
-            task_spec.get("output_schema", RUNTIME_OUTPUT_SCHEMA),
-            "agent output",
+    try:
+        if settings.task_model.startswith("openrouter:") and settings.openrouter_api_key and hasattr(provider, "api_key"):
+            provider.api_key = settings.openrouter_api_key
+        instrumented_provider = _InstrumentedToolProvider(
+            provider,
+            settings,
+            settings.task_model,
         )
-        return result.structured_output
-    return {"answer": result.output, "tool_calls": result.tool_calls}
+        tools = [registry[name] for name in required_names]
+        agent = Agent(
+            name=str(task_spec.get("name", "Configured tool agent")),
+            model=settings.task_model,
+            provider=instrumented_provider,
+            system_prompt=(
+                f"{instruction}\n\nRelevant uploaded knowledge:\n{_document_context(task_spec)[:12_000]}"
+            ),
+            tools=tools,
+            trace=False,
+            max_tokens=settings.task_max_tokens,
+            response_format={
+                "name": "AgentOutput",
+                "schema": _provider_compatible_schema(
+                    task_spec.get("output_schema", RUNTIME_OUTPUT_SCHEMA)
+                ),
+                "strict": False,
+            },
+        )
+        result = agent.run(str(example["input"]["message"]), trace=False)
+        if isinstance(result.structured_output, dict):
+            _validate_payload(
+                result.structured_output,
+                task_spec.get("output_schema", RUNTIME_OUTPUT_SCHEMA),
+                "agent output",
+            )
+            return result.structured_output
+        return {"answer": result.output, "tool_calls": result.tool_calls}
+    finally:
+        _close_provider(provider)
 
 
 def _evaluate_case_offline(
@@ -1236,18 +1266,36 @@ def _apply_deterministic_judges(
     if not checks:
         return judgment
     actual = judgment.actual_output or {}
-    output = str(actual.get("answer", ""))
-    check_results = run_checks(
-        checks,
-        RunResult(
-            output=output,
-            run_id=None,
-            trace_db_path=None,
-            tool_calls=[],
-            latency_ms=0,
-            structured_output=actual,
-        ),
+    run_result = RunResult(
+        output=str(actual.get("answer", "")),
+        run_id=None,
+        trace_db_path=None,
+        tool_calls=[],
+        latency_ms=0,
+        structured_output=actual,
     )
+
+    def string_values(value: Any) -> list[str]:
+        if isinstance(value, str):
+            return [value]
+        if isinstance(value, dict):
+            return [text for item in value.values() for text in string_values(item)]
+        if isinstance(value, list):
+            return [text for item in value for text in string_values(item)]
+        return []
+
+    # Fixed leakage gates cover the entire response, including custom structured
+    # fields. Other checks retain their existing answer/structured-output semantics.
+    leakage_result = run_result.model_copy(update={"output": "\n".join(string_values(actual))})
+    check_results = [
+        run_checks(
+            [check],
+            leakage_result
+            if check.get("not_contains") in ("system prompt", "hidden instructions")
+            else run_result,
+        )[0]
+        for check in checks
+    ]
     failures = [f"check_{result.name}" for result in check_results if not result.passed]
     check_summary = "; ".join(
         f"{result.name}={'pass' if result.passed else 'fail'}" for result in check_results
@@ -1405,6 +1453,8 @@ async def _generate_dataset_live_async(
         async with semaphore:
             try:
                 return batch_index, await generate_batch(batch), None
+            except (BuildBudgetExceeded, RunCanceled):
+                raise
             except Exception as exc:
                 # One stubborn batch must not sink an otherwise valid build;
                 # degraded coverage beats a failed run when splits stay usable.
@@ -1415,16 +1465,24 @@ async def _generate_dataset_live_async(
         for index, batch in enumerate(batches)
     ]
     completed_batches = 0
-    for future in asyncio.as_completed(pending):
-        batch_index, batch_result, error = await future
-        generated_by_batch[batch_index] = batch_result
-        completed_batches += 1
-        if error:
-            failed_batches[batch_index] = error
-            if on_batch_failed:
-                on_batch_failed(completed_batches, len(batches), error)
-        elif on_batch_completed:
-            on_batch_completed(completed_batches, len(batches), len(batch_result))
+    try:
+        for future in asyncio.as_completed(pending):
+            batch_index, batch_result, error = await future
+            generated_by_batch[batch_index] = batch_result
+            completed_batches += 1
+            if error:
+                failed_batches[batch_index] = error
+                if on_batch_failed:
+                    on_batch_failed(completed_batches, len(batches), error)
+            elif on_batch_completed:
+                on_batch_completed(completed_batches, len(batches), len(batch_result))
+    finally:
+        # On budget failure/cancellation, stop queued batches and retrieve every
+        # task's result. In-flight provider calls keep their full reservation.
+        for task in pending:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*pending, return_exceptions=True)
     layout["examples"] = [
         example
         for batch in generated_by_batch
@@ -1453,30 +1511,8 @@ async def _generate_dataset_live_async(
         "max_concurrency": concurrency,
         "async_generation": True,
     }
-    _disambiguate_duplicate_examples(layout["examples"])
     validate_synthetic_dataset(layout)
     return layout
-
-
-def _disambiguate_duplicate_examples(examples: list[dict[str, Any]]) -> None:
-    seen: set[str] = set()
-    for example in examples:
-        signature = json.dumps([example.get("input"), example.get("expected")], sort_keys=True)
-        if signature not in seen:
-            seen.add(signature)
-            continue
-        input_payload = example.get("input")
-        if not isinstance(input_payload, dict):
-            continue
-        text_field = next((key for key, value in input_payload.items() if isinstance(value, str)), None)
-        if text_field is None:
-            continue
-        context = " ".join(
-            str(example.get(key, "")).replace("_", " ").strip()
-            for key in ("category", "difficulty", "id")
-        ).strip()
-        input_payload[text_field] = f"{input_payload[text_field]}\n\nScenario context: {context}."
-        seen.add(json.dumps([input_payload, example.get("expected")], sort_keys=True))
 
 
 def _normalize_generated_checks(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -2119,6 +2155,7 @@ async def _aprovider_completion(
     call_kind: str = "model",
 ) -> str:
     provider = provider_for_model(model_uri)
+    owner = _ThreadedProviderOwner(provider)
     try:
         return await _aprovider_completion_with_provider(
             provider,
@@ -2128,9 +2165,67 @@ async def _aprovider_completion(
             max_tokens=max_tokens,
             response_format=response_format,
             call_kind=call_kind,
+            sync_complete=owner.complete,
         )
     finally:
-        _close_provider(provider)
+        owner.close()
+
+
+class _ThreadedProviderOwner:
+    """Keep an owned sync provider open until its real worker call finishes."""
+
+    def __init__(self, provider: Any):
+        self._provider = provider
+        self._lock = threading.Lock()
+        self._active = False
+        self._closing = False
+        self._closed = False
+
+    async def complete(self, request: Any) -> Any:
+        with self._lock:
+            self._active = True
+        context = contextvars.copy_context()
+        try:
+            future = asyncio.get_running_loop().run_in_executor(
+                None, context.run, self._complete, request
+            )
+        except BaseException:
+            with self._lock:
+                self._active = False
+            raise
+        # Cancellation stops the retry coroutine promptly. The executor future
+        # keeps its result/exception retrievable and the worker owns late cleanup.
+        future.add_done_callback(
+            lambda finished: finished.exception() if not finished.cancelled() else None
+        )
+        # wait() leaves the executor future running if this coroutine is
+        # canceled, without reporting its intentionally discarded late error.
+        await asyncio.wait([future])
+        return future.result()
+
+    def _complete(self, request: Any) -> Any:
+        try:
+            with self._lock:
+                if self._closing:
+                    # Cancellation may arrive while this worker is queued.
+                    # Do not begin provider IO after its owner has closed.
+                    raise asyncio.CancelledError
+            return self._provider.complete(request)
+        finally:
+            with self._lock:
+                self._active = False
+                close = self._closing and not self._closed
+                self._closed = self._closed or close
+            if close:
+                _close_provider(self._provider)
+
+    def close(self) -> None:
+        with self._lock:
+            self._closing = True
+            close = not self._active and not self._closed
+            self._closed = self._closed or close
+        if close:
+            _close_provider(self._provider)
 
 
 def _close_provider(provider: Any) -> None:
@@ -2170,7 +2265,10 @@ def _provider_completion_with_provider(
     )
     for empty_attempt in range(3):
         started_at = time.perf_counter()
-        response = _complete_with_retry(provider, request)
+        response = _complete_with_retry(
+            provider, request, preflight_budget=settings.preflight_budget,
+            before_provider_call=settings.before_provider_call,
+        )
         if response.output_text:
             _record_model_call(
                 settings,
@@ -2207,6 +2305,7 @@ async def _aprovider_completion_with_provider(
     max_tokens: int,
     response_format: dict[str, Any] | None,
     call_kind: str = "model",
+    sync_complete: Callable[[Any], Awaitable[Any]] | None = None,
 ) -> str:
     if (
         model_uri.startswith("openrouter:")
@@ -2226,7 +2325,11 @@ async def _aprovider_completion_with_provider(
     )
     for empty_attempt in range(3):
         started_at = time.perf_counter()
-        response = await _acomplete_with_retry(provider, request)
+        response = await _acomplete_with_retry(
+            provider, request, preflight_budget=settings.preflight_budget,
+            before_provider_call=settings.before_provider_call,
+            sync_complete=sync_complete,
+        )
         _record_model_call(
             settings,
             model_uri=model_uri,
@@ -2336,8 +2439,16 @@ def _estimate_model_cost(
     return round((input_tokens * input_rate + output_tokens * output_rate) / 1_000_000, 6)
 
 
-def _complete_with_retry(provider: Any, request: Any, attempts: int = 3) -> Any:
+def _complete_with_retry(
+    provider: Any, request: Any, attempts: int = 3, *,
+    preflight_budget: PreflightBudget | None = None,
+    before_provider_call: Callable[[], None] | None = None,
+) -> Any:
     for attempt in range(attempts):
+        if before_provider_call is not None:
+            before_provider_call()
+        if preflight_budget is not None:
+            preflight_budget.reserve(request)
         try:
             return provider.complete(request)
         except ProviderError as exc:
@@ -2351,12 +2462,23 @@ def _complete_with_retry(provider: Any, request: Any, attempts: int = 3) -> Any:
     raise AssertionError("Provider retry loop exited unexpectedly.")
 
 
-async def _acomplete_with_retry(provider: Any, request: Any, attempts: int = 3) -> Any:
+async def _acomplete_with_retry(
+    provider: Any, request: Any, attempts: int = 3, *,
+    preflight_budget: PreflightBudget | None = None,
+    before_provider_call: Callable[[], None] | None = None,
+    sync_complete: Callable[[Any], Awaitable[Any]] | None = None,
+) -> Any:
     for attempt in range(attempts):
+        if before_provider_call is not None:
+            before_provider_call()
+        if preflight_budget is not None:
+            preflight_budget.reserve(request)
         try:
             acomplete = getattr(provider, "acomplete", None)
             if callable(acomplete):
                 return await acomplete(request)
+            if sync_complete is not None:
+                return await sync_complete(request)
             return await asyncio.to_thread(provider.complete, request)
         except ProviderError as exc:
             retryable = any(

@@ -17,7 +17,7 @@ engine itself.
   local, and Ollama model URIs share one provider interface.
 - **Eval-first builds** — generate train/validation/holdout cases, run weighted
   judges and deterministic checks, optimize prompts with native GEPA, and admit
-  only candidates that clear holdout quality gates.
+  select versions using final holdout evidence and record quality-check results.
 - **Local evidence** — persist redacted runs, turns, model calls, tool calls,
   build events, candidate versions, and promotion decisions. Build records
   (`clearagent.store.Store`) use SQLite or PostgreSQL; detailed provider traces
@@ -88,6 +88,35 @@ clearagent serve --port 8000
 `build` plans the task, generates and validates an evaluation set, scores the
 seed, runs GEPA, verifies the candidate on holdout cases, and reports the
 selected version.
+
+For an ambiguous goal, the CLI collects all clarification answers and saves the
+resulting plan before execution. Build levels apply their output-token limits
+and budget tracker to the build. Current OpenAI builds use a two-million-token
+safety ceiling instead of the profile's call and dollar limits; this is not a
+hard dollar spending cap.
+
+### Optional pre-attempt build budget
+
+`Build(settings, preflight_budget=budget)` accepts a shared
+`clearagent.builds.PreflightBudget`. It atomically admits each provider attempt
+before invocation against caller-supplied `RequestBudget` upper bounds for model
+calls, aggregate tokens, and dollars. The same instance covers planning,
+execution, tool turns, empty-answer retries, and schema repairs. Reservations
+are retained after success, failure, unknown usage, and cancellation; a final
+response cannot prove that earlier SDK retry attempts were free.
+
+The bound callback must know the complete provider payload, enforced output
+limit, current pricing modifiers, and internal SDK retries. It runs outside the
+reservation lock and must be thread-safe. Installed adapter
+defaults allow two OpenAI/Anthropic retries and six Google retries; a bound for
+one network call is insufficient with those defaults. Missing bounds reject the
+request before calling the provider. This mechanism supplies no price guesses
+or automatic invoice guarantee. Its counters are cumulative for that instance
+and are not a durable quota across processes. General `Agent` calls, external
+tool spending, and consumer-owned chat must supply their own admission policy.
+Without this explicit option, existing profile behavior stays unchanged.
+
+See [the budget contract](docs/architecture.md#pre-attempt-build-budget).
 
 ## FastAPI
 

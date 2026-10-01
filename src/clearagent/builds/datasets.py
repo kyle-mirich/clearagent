@@ -1,3 +1,4 @@
+import json
 from typing import Any
 
 
@@ -179,7 +180,8 @@ def validate_synthetic_dataset(dataset: dict[str, Any]) -> None:
     if any(not example_id for example_id in ids) or len(ids) != len(set(ids)):
         raise ValueError("Synthetic example IDs must be present and unique.")
     fingerprints = [
-        repr((example.get("input"), example.get("expected"))) for example in examples
+        json.dumps([example.get("input"), example.get("expected")], sort_keys=True)
+        for example in examples
     ]
     if len(fingerprints) != len(set(fingerprints)):
         raise ValueError("Synthetic examples must not contain duplicate input/expected pairs.")

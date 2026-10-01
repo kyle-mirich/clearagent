@@ -52,17 +52,22 @@ def build(
     typer.echo("Planning the agent and its judges…")
     planning = build_engine.plan(PlanningRequest(goal=goal))
     if planning.status == "needs_clarification":
-        for question in planning.questions:
-            answer = typer.prompt(f"{question.question}\n  options: {' | '.join(question.options)}")
-            planning = build_engine.plan(
-                PlanningRequest(goal=goal, answers={**{q.id: "" for q in planning.questions}, question.id: answer})
-            )
-            break
+        answers = {
+            question.id: typer.prompt(f"{question.question}\n  options: {' | '.join(question.options)}")
+            for question in planning.questions
+        }
+        planning = build_engine.plan(PlanningRequest(goal=goal, answers=answers))
     if planning.task_spec is None:
         typer.echo("Planning could not produce a task specification.", err=True)
         raise typer.Exit(code=1)
 
-    project = store.create_project(owner_id="cli", goal=goal, name=planning.task_spec.name, settings={})
+    project = store.create_project(
+        owner_id="cli", goal=goal, name=planning.task_spec.name,
+        settings={
+            "task_spec": planning.task_spec.model_dump(mode="json"),
+            "agent_prd": planning.agent_prd.model_dump(mode="json") if planning.agent_prd else None,
+        },
+    )
     run, _ = store.create_run(
         owner_id="cli",
         project_id=project.id,
@@ -75,7 +80,7 @@ def build(
     worker = threading.Thread(
         target=run_improvement_pipeline,
         args=(store, run.id),
-        kwargs={"settings": build_engine.pipeline_settings},
+        kwargs={"settings": build_engine.pipeline_settings_for(level)},
         daemon=True,
     )
     worker.start()

@@ -1,8 +1,12 @@
+import asyncio
+import threading
+
 from fastapi.testclient import TestClient
 
 from clearagent.app import create_app
 from clearagent.config import Settings
 from clearagent.runtime.providers.base import FakeProvider, ProviderResponse
+from clearagent.app import _stream_text
 
 
 def client_with_fake(monkeypatch) -> TestClient:
@@ -44,3 +48,65 @@ def test_invoke_stream_returns_server_sent_events(monkeypatch):
     assert response.headers["content-type"].startswith("text/event-stream")
     assert '"type": "delta"' in body
     assert '"type": "done"' in body
+
+
+def test_invoke_stream_sends_the_system_instruction_once(monkeypatch):
+    provider = FakeProvider([ProviderResponse.fake_text("answer")])
+    monkeypatch.setattr("clearagent.app.provider_for_model", lambda _uri: provider)
+    client = TestClient(create_app(Settings(_env_file=None)))
+    response = client.post("/api/v1/invoke/stream", json={"message": "Say hi", "instruction": "Be brief"})
+    assert response.status_code == 200
+    messages = provider.completed_requests[0].body["messages"]
+    assert messages == [{"role": "system", "content": "Be brief"}, {"role": "user", "content": "Say hi"}]
+
+
+def test_http_stream_closes_the_agent_iterator_when_abandoned():
+    closed = threading.Event()
+
+    class StreamingAgent:
+        def stream_text(self, _input):
+            try:
+                yield "partial answer"
+                yield "remaining answer"
+            finally:
+                closed.set()
+
+    async def abandon():
+        stream = _stream_text(StreamingAgent(), "Question")
+        assert await anext(stream) == "partial answer"
+        await stream.aclose()
+        assert closed.is_set()
+
+    asyncio.run(abandon())
+
+
+def test_http_stream_cancellation_closes_after_inflight_next_finishes():
+    started = threading.Event()
+    release = threading.Event()
+    closed = threading.Event()
+
+    class StreamingAgent:
+        def stream_text(self, _input):
+            try:
+                started.set()
+                assert release.wait(timeout=5)
+                yield "answer"
+            finally:
+                closed.set()
+
+    async def cancel():
+        stream = _stream_text(StreamingAgent(), "Question")
+        next_chunk = asyncio.create_task(anext(stream))
+        try:
+            assert await asyncio.to_thread(started.wait, 5)
+            next_chunk.cancel()
+            await asyncio.sleep(0)
+        finally:
+            release.set()
+        try:
+            await next_chunk
+        except asyncio.CancelledError:
+            pass
+        assert closed.is_set()
+
+    asyncio.run(cancel())

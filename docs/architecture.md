@@ -94,6 +94,25 @@ Holdout cases are evaluated after optimization and do not tune GEPA. Provider
 requests and responses are redacted before trace persistence; deterministic mode
 uses templates and local judging so the loop can run without credentials.
 
+Generated input/expected pairs must be distinct across all splits; generation
+fails rather than renaming duplicate cases. Fixed leakage checks inspect string
+values throughout structured outputs, including nested fields. Current promotion
+records required-behavior and pass-rate evidence but does not enforce absolute
+quality floors (`thresholds_enforced=false`); an optimized candidate must improve
+on the seed's holdout score and the incumbent, when present. Otherwise the
+incumbent is retained, or the seed is selected for a first build.
+
+Provider generation options apply to synchronous, asynchronous, and text-stream
+requests. Native tool binding translates schemas and named tool selection for
+each provider. Intermediate tool-call turns are not validated as final structured
+answers. Missing provider token usage remains unknown; reported zero usage is
+distinct from missing usage, and provider costs are retained only when reported.
+
+The HTTP stream adapter adds the system instruction once and closes abandoned
+agent iterators after any in-flight provider read finishes. A late provider error
+cannot change a canceled run into a failed run: the failure transition updates
+only rows still in queued/running state.
+
 ## Known boundary observations
 
 These are current facts about the seam, not design goals. They are recorded so
@@ -143,6 +162,30 @@ Pooling requires `psycopg-pool>=3.2,<4`, installed as a runtime dependency. It
 is selected only through the Store constructor; engine Settings and the CLI
 do not enable it. Detailed traces still use `SQLiteTraceStore`.
 
+Direct connections close even when SQLite pragmas or PostgreSQL timeout setup
+fail. A failed rollback does not replace the original setup/transaction error.
+
+## Build provider ownership
+
+Each build completion and tool evaluation owns the provider it constructs and
+invokes its optional `close()` after use. Canceling a sync-only provider's async
+fallback returns promptly, while its real worker keeps the provider open until
+the call finishes. A queued worker skips provider IO if cancellation arrives
+before it starts. The canceled retry coroutine starts no further attempts;
+late worker errors are retrieved and cleanup runs once. Existing SDK retries
+inside that worker may still finish and retain their budget reservation.
+
+Before every build provider attempt, execution checks persisted cancellation
+state. This covers task/judge calls, queued evaluation cases, synthetic batches,
+transport retries, blank answers, schema repairs, and instrumented tool calls.
+Cancellation propagates without failing or promoting the run. Already admitted
+in-flight calls and their internal SDK retries can finish; cancellation prevents
+later engine attempts and preserves their consumed/reserved resources.
+
+The OpenAI and Anthropic adapters share native SDK transports between models;
+per-case cleanup does not close those shared clients. Custom closeable providers
+retain their explicit ownership contract.
+
 ## Model-call usage provenance
 
 Build `model_call_completed` events include a unique `call_id`, `usage_known`, and
@@ -162,3 +205,33 @@ fail execution. This lets consumers measure native build planning calls directly
 without trusting planner events copied from client-supplied plans. Fixture
 replay is tagged `usage_source=replay`; recorded token/cost data never becomes
 newly measured provider usage, while simulated budget accounting is preserved.
+
+## Pre-attempt build budget
+
+`PreflightBudget(limits, request_bound)` accepts finite `BudgetLimits` and a
+callback returning `RequestBudget` for the fully built provider request.
+`RequestBudget.max_model_calls` is positive; token and dollar bounds are
+nonnegative. All three are aggregate upper bounds for one provider invocation,
+including every possible internal SDK retry. The callback must include provider
+defaults and any adapter-generated structured schemas missing from the generic
+request body, output limits, input framing, and applicable billing modifiers.
+It runs synchronously outside the reservation lock and may run concurrently;
+callers must provide a thread-safe callback.
+Unknown bounds reject before invocation. Dollar admission uses exact rational
+addition of the supplied decimal values, independent of ambient numeric context.
+
+The guard reserves atomically before every outer sync/async retry; empty-answer
+and JSON-repair loops re-enter it. Instrumented build tool providers reserve for
+completion and streaming. A `Build(..., preflight_budget=guard)` preserves that
+same guard through planning and profile execution. All reservations remain
+charged against admission after success, transport error, timeout, cancellation,
+or unknown usage. Canceled thread-backed calls may continue; their reservations
+remain. No response-driven refunds are inferred. Synthetic generation propagates
+budget rejection and cancels queued tasks rather than degrading coverage.
+
+This guard supplements the separate post-response `BudgetTracker`; it does not
+change default profile policy or generic cost estimates. The post-response
+tracker retains consumed resources even when its limit is crossed. Preflight
+enforcement is conditional on trustworthy caller bounds and covers the lifetime
+of one in-process guard, not provider invoices or durable quotas. Consumers own
+cross-process admission, general runtime/chat calls, and external tool spending.
