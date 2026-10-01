@@ -17,7 +17,7 @@ engine itself.
   local, and Ollama model URIs share one provider interface.
 - **Eval-first builds** — generate train/validation/holdout cases, run weighted
   judges and deterministic checks, optimize prompts with native GEPA, and admit
-  only candidates that clear holdout quality gates.
+  select versions using final holdout evidence and record quality-check results.
 - **Local evidence** — persist redacted runs, turns, model calls, tool calls,
   build events, candidate versions, and promotion decisions. Build records
   (`clearagent.store.Store`) use SQLite or PostgreSQL; detailed provider traces
@@ -88,6 +88,12 @@ clearagent serve --port 8000
 `build` plans the task, generates and validates an evaluation set, scores the
 seed, runs GEPA, verifies the candidate on holdout cases, and reports the
 selected version.
+
+For an ambiguous goal, the CLI collects all clarification answers and saves the
+resulting plan before execution. Build levels apply their output-token limits
+and budget tracker to the build. Current OpenAI builds use a two-million-token
+safety ceiling instead of the profile's call and dollar limits; this is not a
+hard dollar spending cap.
 
 ## FastAPI
 

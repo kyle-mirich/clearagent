@@ -94,6 +94,25 @@ Holdout cases are evaluated after optimization and do not tune GEPA. Provider
 requests and responses are redacted before trace persistence; deterministic mode
 uses templates and local judging so the loop can run without credentials.
 
+Generated input/expected pairs must be distinct across all splits; generation
+fails rather than renaming duplicate cases. Fixed leakage checks inspect string
+values throughout structured outputs, including nested fields. Current promotion
+records required-behavior and pass-rate evidence but does not enforce absolute
+quality floors (`thresholds_enforced=false`); an optimized candidate must improve
+on the seed's holdout score and the incumbent, when present. Otherwise the
+incumbent is retained, or the seed is selected for a first build.
+
+Provider generation options apply to synchronous, asynchronous, and text-stream
+requests. Native tool binding translates schemas and named tool selection for
+each provider. Intermediate tool-call turns are not validated as final structured
+answers. Missing provider token usage remains unknown; reported zero usage is
+distinct from missing usage, and provider costs are retained only when reported.
+
+The HTTP stream adapter adds the system instruction once and closes abandoned
+agent iterators after any in-flight provider read finishes. A late provider error
+cannot change a canceled run into a failed run: the failure transition updates
+only rows still in queued/running state.
+
 ## Known boundary observations
 
 These are current facts about the seam, not design goals. They are recorded so
