@@ -19,7 +19,6 @@ from pydantic import BaseModel, Field
 from clearagent import __version__
 from clearagent.agent import Agent
 from clearagent.config import Settings
-from clearagent.runtime.messages import Message, normalize_messages
 from clearagent.runtime.providers.base import ProviderError
 from clearagent.runtime.providers.registry import provider_for_model
 from clearagent.runtime.tools import tool
@@ -103,11 +102,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if body.tools:
             raise HTTPException(status_code=422, detail="Streaming does not support tools.")
         agent = build_agent(body.instruction, body.model, [])
-        messages = normalize_messages(agent.system_prompt, body.message)
 
         async def events() -> AsyncIterator[bytes]:
             try:
-                async for chunk in _stream_text(agent, messages):
+                async for chunk in _stream_text(agent, body.message):
                     yield _sse({"type": "delta", "text": chunk})
                 yield _sse({"type": "done"})
             except ProviderError as exc:
@@ -125,10 +123,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     return app
 
 
-async def _stream_text(agent: Agent, messages: list[Message]) -> AsyncIterator[str]:
+async def _stream_text(agent: Agent, message: str) -> AsyncIterator[str]:
     import asyncio
 
-    iterator = agent.stream_text(messages)
+    iterator = agent.stream_text(message)
+    pending: asyncio.Task[tuple[bool, str]] | None = None
 
     def _next() -> tuple[bool, str]:
         try:
@@ -136,11 +135,27 @@ async def _stream_text(agent: Agent, messages: list[Message]) -> AsyncIterator[s
         except StopIteration:
             return False, ""
 
-    while True:
-        has, chunk = await asyncio.to_thread(_next)
-        if not has:
-            return
-        yield chunk
+    async def close_iterator() -> None:
+        # next() runs in a worker thread. Wait for it before closing the
+        # generator so cancellation cannot close an executing generator.
+        if pending is not None:
+            try:
+                await pending
+            except Exception:
+                pass
+        await asyncio.to_thread(iterator.close)
+
+    try:
+        while True:
+            pending = asyncio.create_task(asyncio.to_thread(_next))
+            has, chunk = await asyncio.shield(pending)
+            if not has:
+                return
+            yield chunk
+    finally:
+        # Shield cleanup from a repeated disconnect cancellation; the task
+        # continues to close the iterator after the provider yields or fails.
+        await asyncio.shield(asyncio.create_task(close_iterator()))
 
 
 def _sse(payload: dict[str, Any]) -> bytes:
