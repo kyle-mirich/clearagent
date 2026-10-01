@@ -62,11 +62,11 @@ StructuredModelT = TypeVar("StructuredModelT", bound=BaseModel)
 @dataclass(frozen=True)
 class PipelineSettings:
     deterministic_mode: bool = False
-    planner_model: str = "openai:gpt-5.6-luna"
-    synthetic_model: str = "openai:gpt-5.6-luna"
-    task_model: str = "openai:gpt-5.6-luna"
-    judge_model: str = "openai:gpt-5.6-luna"
-    reflection_model: str = "openai:gpt-5.6-luna"
+    planner_model: str = "openai:gpt-6-luna"
+    synthetic_model: str = "openai:gpt-6-luna"
+    task_model: str = "openai:gpt-6-luna"
+    judge_model: str = "openai:gpt-6-luna"
+    reflection_model: str = "openai:gpt-6-luna"
     openrouter_api_key: str | None = None
     gepa_max_tokens: int = 4000
     task_max_tokens: int = 4000
