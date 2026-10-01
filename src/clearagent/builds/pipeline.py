@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 from collections import Counter
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import contextvars
 from dataclasses import dataclass, replace
 import json
 import os
@@ -1050,41 +1051,44 @@ def _execute_tool_agent(
     if missing:
         raise RuntimeError(f"Tool agent is missing registered tools: {', '.join(missing)}")
     provider = provider_for_model(settings.task_model)
-    if settings.task_model.startswith("openrouter:") and settings.openrouter_api_key and hasattr(provider, "api_key"):
-        provider.api_key = settings.openrouter_api_key
-    instrumented_provider = _InstrumentedToolProvider(
-        provider,
-        settings,
-        settings.task_model,
-    )
-    tools = [registry[name] for name in required_names]
-    agent = Agent(
-        name=str(task_spec.get("name", "Configured tool agent")),
-        model=settings.task_model,
-        provider=instrumented_provider,
-        system_prompt=(
-            f"{instruction}\n\nRelevant uploaded knowledge:\n{_document_context(task_spec)[:12_000]}"
-        ),
-        tools=tools,
-        trace=False,
-        max_tokens=settings.task_max_tokens,
-        response_format={
-            "name": "AgentOutput",
-            "schema": _provider_compatible_schema(
-                task_spec.get("output_schema", RUNTIME_OUTPUT_SCHEMA)
-            ),
-            "strict": False,
-        },
-    )
-    result = agent.run(str(example["input"]["message"]), trace=False)
-    if isinstance(result.structured_output, dict):
-        _validate_payload(
-            result.structured_output,
-            task_spec.get("output_schema", RUNTIME_OUTPUT_SCHEMA),
-            "agent output",
+    try:
+        if settings.task_model.startswith("openrouter:") and settings.openrouter_api_key and hasattr(provider, "api_key"):
+            provider.api_key = settings.openrouter_api_key
+        instrumented_provider = _InstrumentedToolProvider(
+            provider,
+            settings,
+            settings.task_model,
         )
-        return result.structured_output
-    return {"answer": result.output, "tool_calls": result.tool_calls}
+        tools = [registry[name] for name in required_names]
+        agent = Agent(
+            name=str(task_spec.get("name", "Configured tool agent")),
+            model=settings.task_model,
+            provider=instrumented_provider,
+            system_prompt=(
+                f"{instruction}\n\nRelevant uploaded knowledge:\n{_document_context(task_spec)[:12_000]}"
+            ),
+            tools=tools,
+            trace=False,
+            max_tokens=settings.task_max_tokens,
+            response_format={
+                "name": "AgentOutput",
+                "schema": _provider_compatible_schema(
+                    task_spec.get("output_schema", RUNTIME_OUTPUT_SCHEMA)
+                ),
+                "strict": False,
+            },
+        )
+        result = agent.run(str(example["input"]["message"]), trace=False)
+        if isinstance(result.structured_output, dict):
+            _validate_payload(
+                result.structured_output,
+                task_spec.get("output_schema", RUNTIME_OUTPUT_SCHEMA),
+                "agent output",
+            )
+            return result.structured_output
+        return {"answer": result.output, "tool_calls": result.tool_calls}
+    finally:
+        _close_provider(provider)
 
 
 def _evaluate_case_offline(
@@ -2137,6 +2141,7 @@ async def _aprovider_completion(
     call_kind: str = "model",
 ) -> str:
     provider = provider_for_model(model_uri)
+    owner = _ThreadedProviderOwner(provider)
     try:
         return await _aprovider_completion_with_provider(
             provider,
@@ -2146,9 +2151,62 @@ async def _aprovider_completion(
             max_tokens=max_tokens,
             response_format=response_format,
             call_kind=call_kind,
+            sync_complete=owner.complete,
         )
     finally:
-        _close_provider(provider)
+        owner.close()
+
+
+class _ThreadedProviderOwner:
+    """Keep an owned sync provider open until its real worker call finishes."""
+
+    def __init__(self, provider: Any):
+        self._provider = provider
+        self._lock = threading.Lock()
+        self._active = False
+        self._closing = False
+        self._closed = False
+
+    async def complete(self, request: Any) -> Any:
+        with self._lock:
+            self._active = True
+        context = contextvars.copy_context()
+        try:
+            future = asyncio.get_running_loop().run_in_executor(
+                None, context.run, self._complete, request
+            )
+        except BaseException:
+            with self._lock:
+                self._active = False
+            raise
+        # Cancellation stops the retry coroutine promptly. The executor future
+        # keeps its result/exception retrievable and the worker owns late cleanup.
+        future.add_done_callback(
+            lambda finished: finished.exception() if not finished.cancelled() else None
+        )
+        # wait() leaves the executor future running if this coroutine is
+        # canceled, without reporting its intentionally discarded late error.
+        await asyncio.wait([future])
+        return future.result()
+
+    def _complete(self, request: Any) -> Any:
+        try:
+            return self._provider.complete(request)
+        finally:
+            with self._lock:
+                self._active = False
+                close = self._closing and not self._closed
+                self._closed = self._closed or close
+            if close:
+                _close_provider(self._provider)
+
+    def close(self) -> None:
+        with self._lock:
+            self._closing = True
+            close = not self._active and not self._closed
+            self._closed = self._closed or close
+        if close:
+            _close_provider(self._provider)
 
 
 def _close_provider(provider: Any) -> None:
@@ -2227,6 +2285,7 @@ async def _aprovider_completion_with_provider(
     max_tokens: int,
     response_format: dict[str, Any] | None,
     call_kind: str = "model",
+    sync_complete: Callable[[Any], Awaitable[Any]] | None = None,
 ) -> str:
     if (
         model_uri.startswith("openrouter:")
@@ -2247,7 +2306,8 @@ async def _aprovider_completion_with_provider(
     for empty_attempt in range(3):
         started_at = time.perf_counter()
         response = await _acomplete_with_retry(
-            provider, request, preflight_budget=settings.preflight_budget
+            provider, request, preflight_budget=settings.preflight_budget,
+            sync_complete=sync_complete,
         )
         _record_model_call(
             settings,
@@ -2381,6 +2441,7 @@ def _complete_with_retry(
 async def _acomplete_with_retry(
     provider: Any, request: Any, attempts: int = 3, *,
     preflight_budget: PreflightBudget | None = None,
+    sync_complete: Callable[[Any], Awaitable[Any]] | None = None,
 ) -> Any:
     for attempt in range(attempts):
         if preflight_budget is not None:
@@ -2389,6 +2450,8 @@ async def _acomplete_with_retry(
             acomplete = getattr(provider, "acomplete", None)
             if callable(acomplete):
                 return await acomplete(request)
+            if sync_complete is not None:
+                return await sync_complete(request)
             return await asyncio.to_thread(provider.complete, request)
         except ProviderError as exc:
             retryable = any(

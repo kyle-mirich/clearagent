@@ -162,6 +162,22 @@ Pooling requires `psycopg-pool>=3.2,<4`, installed as a runtime dependency. It
 is selected only through the Store constructor; engine Settings and the CLI
 do not enable it. Detailed traces still use `SQLiteTraceStore`.
 
+Direct connections close even when SQLite pragmas or PostgreSQL timeout setup
+fail. A failed rollback does not replace the original setup/transaction error.
+
+## Build provider ownership
+
+Each build completion and tool evaluation owns the provider it constructs and
+invokes its optional `close()` after use. Canceling a sync-only provider's async
+fallback returns promptly, while its real worker keeps the provider open until
+the call finishes. The canceled retry coroutine starts no further attempts;
+late worker errors are retrieved and cleanup runs once. Existing SDK retries
+inside that worker may still finish and retain their budget reservation.
+
+The OpenAI and Anthropic adapters share native SDK transports between models;
+per-case cleanup does not close those shared clients. Custom closeable providers
+retain their explicit ownership contract.
+
 ## Model-call usage provenance
 
 Build `model_call_completed` events include a unique `call_id`, `usage_known`, and
