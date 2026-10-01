@@ -162,3 +162,5 @@ or Settings field for this option.
 
 Successful transactions commit and failed transactions roll back before a
 connection returns to the pool. See [pool lifecycle and limits](docs/architecture.md#store-connection-lifecycle). Detailed provider traces remain SQLite-only.
+
+Build model-call events expose deduplication IDs and explicit usage/cost provenance; see [the usage event contract](docs/architecture.md#model-call-usage-provenance).

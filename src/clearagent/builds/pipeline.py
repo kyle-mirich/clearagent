@@ -6,10 +6,12 @@ from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, replace
 import json
+import os
 import re
 import threading
 import time
 from typing import Any, Literal, TypeVar
+from uuid import uuid4
 
 from jsonschema import Draft202012Validator
 from pydantic import BaseModel, Field, ValidationError, model_validator
@@ -2252,6 +2254,7 @@ def _record_model_call(
     purpose: str,
 ) -> None:
     usage = response.usage
+    replay = os.environ.get("CLEARAGENT_OPENAI_FIXTURE_MODE") == "replay"
     input_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
     output_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
     total_tokens = int(getattr(usage, "total_tokens", input_tokens + output_tokens) or input_tokens + output_tokens)
@@ -2264,6 +2267,15 @@ def _record_model_call(
     try:
         recorder(
             {
+                "call_id": uuid4().hex,
+                "usage_source": "replay" if replay else "provider",
+                "usage_known": not replay and usage is not None and (
+                    not isinstance(getattr(response, "raw", None), dict)
+                    or response.raw.get("usage_known", True) is True
+                ),
+                # Product reporting must not present budget fallback prices as
+                # measured spend. Preserve the existing budget fields separately.
+                "reported_cost_usd": None if replay else _reported_model_cost(response),
                 "purpose": purpose,
                 "model_uri": model_uri,
                 "model": str(getattr(response, "model", "") or model_uri),
@@ -2287,6 +2299,17 @@ def _record_model_call(
     except Exception:
         # Provider telemetry is best-effort and must not alter pipeline behavior.
         return
+
+
+def _reported_model_cost(response: Any) -> float | None:
+    raw = getattr(response, "raw", None)
+    usage = raw.get("usage") if isinstance(raw, dict) else None
+    if isinstance(usage, dict):
+        for key in ("cost", "total_cost"):
+            value = usage.get(key)
+            if isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= value < float("inf"):
+                return float(value)
+    return None
 
 
 def _estimate_model_cost(
