@@ -32,15 +32,15 @@ engine itself.
 ClearAgent is a Python 3.11+ engine for building an agent from a goal, testing
 it, improving its instructions, and keeping the best version.
 
-Install the first GitHub release with `uv`:
+Install the current GitHub alpha release with `uv`:
 
 ```bash
-uv add "clearagent @ git+https://github.com/kyle-mirich/clearagent.git@v0.1.0"
+uv add "clearagent @ git+https://github.com/kyle-mirich/clearagent.git@v0.1.1"
 ```
 
 ### Why
 
-The `v0.1.0` tag keeps the install reproducible and avoids the unrelated
+The `v0.1.1` tag keeps the install reproducible and avoids the unrelated
 package currently using the `clearagent` name on PyPI. ClearAgent is alpha, so
 install a release tag or a full commit SHA instead of tracking `main`.
 
@@ -135,3 +135,30 @@ map, and known boundary observations.
 ## Status
 
 Alpha. The engine interface, CLI, and minimal HTTP routes may still evolve.
+
+## PostgreSQL connection pooling
+
+Build/run records use `Store`, with SQLite or PostgreSQL. PostgreSQL pooling
+is opt-in through the Python constructor; existing calls keep opening a direct
+connection for each unit of work.
+
+```python
+from clearagent import Store
+
+store = Store(database_url, postgres_pool_size=2)
+try:
+    store.ping()
+    # Reuse this Store for the lifetime of its owner.
+finally:
+    store.close()
+```
+
+A positive `postgres_pool_size` bounds connections per Store instance. The
+default is zero (disabled); negative values raise `ValueError`. SQLite never
+allocates a PostgreSQL pool. Call `close()` at owner shutdown, after database
+work finishes; a closed pool rejects further borrowing. Each process and Store
+has its own pool, so size the total across all owners. There is no CLI switch
+or Settings field for this option.
+
+Successful transactions commit and failed transactions roll back before a
+connection returns to the pool. See [pool lifecycle and limits](docs/architecture.md#store-connection-lifecycle). Detailed provider traces remain SQLite-only.

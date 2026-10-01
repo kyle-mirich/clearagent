@@ -13,4 +13,4 @@ __all__ = [
     "SavedAgentConfig", "Settings", "Store", "create_agent", "tool", "__version__",
 ]
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"

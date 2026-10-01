@@ -39,9 +39,12 @@ jobs:
       - run: uv run pytest -q
       - run: uv build
       - name: Verify installed engine wheel outside checkout
-        run: >-
-          uv run --isolated --no-project --directory "$(mktemp -d)" --python 3.14
-          --with "$GITHUB_WORKSPACE/dist/clearagent-0.1.0-py3-none-any.whl"
+        shell: bash
+        run: |
+          wheels=("$GITHUB_WORKSPACE"/dist/clearagent-*.whl)
+          test "${#wheels[@]}" -eq 1 && test -f "${wheels[0]}"
+          uv run --isolated --no-project --directory "$(mktemp -d)" --python 3.14 \
+          --with "${wheels[0]}" \
           python "$GITHUB_WORKSPACE/scripts/smoke_package.py"
 
   compatibility:
@@ -62,7 +65,10 @@ jobs:
       - run: uv run pytest -q
       - run: uv build
       - name: Verify installed engine wheel outside checkout
-        run: >-
-          uv run --isolated --no-project --directory "$(mktemp -d)" --python ${{ matrix.python-version }}
-          --with "$GITHUB_WORKSPACE/dist/clearagent-0.1.0-py3-none-any.whl"
+        shell: bash
+        run: |
+          wheels=("$GITHUB_WORKSPACE"/dist/clearagent-*.whl)
+          test "${#wheels[@]}" -eq 1 && test -f "${wheels[0]}"
+          uv run --isolated --no-project --directory "$(mktemp -d)" --python ${{ matrix.python-version }} \
+          --with "${wheels[0]}" \
           python "$GITHUB_WORKSPACE/scripts/smoke_package.py"
