@@ -176,6 +176,8 @@ def validate_synthetic_dataset(dataset: dict[str, Any]) -> None:
     examples = dataset.get("examples") or []
     if not examples:
         raise ValueError("Synthetic dataset must contain examples.")
+    if dataset.get("row_count") != len(examples):
+        raise ValueError("Synthetic dataset row count does not match its examples.")
     ids = [str(example.get("id", "")) for example in examples]
     if any(not example_id for example_id in ids) or len(ids) != len(set(ids)):
         raise ValueError("Synthetic example IDs must be present and unique.")
@@ -185,6 +187,15 @@ def validate_synthetic_dataset(dataset: dict[str, Any]) -> None:
     ]
     if len(fingerprints) != len(set(fingerprints)):
         raise ValueError("Synthetic examples must not contain duplicate input/expected pairs.")
+    input_splits: dict[str, set[str]] = {}
+    for example in examples:
+        split = example.get("split")
+        if split not in {"train", "validation", "test"}:
+            raise ValueError("Synthetic examples require a valid dataset split.")
+        fingerprint = json.dumps(example.get("input"), sort_keys=True)
+        input_splits.setdefault(fingerprint, set()).add(split)
+    if any(len(splits) != 1 for splits in input_splits.values()):
+        raise ValueError("Synthetic example inputs cannot cross dataset splits.")
     actual_counts = {
         split: sum(example.get("split") == split for example in examples)
         for split in ("train", "validation", "test")
