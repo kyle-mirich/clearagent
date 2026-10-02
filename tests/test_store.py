@@ -245,7 +245,7 @@ def test_repeated_pipeline_builds_continue_the_project_version_sequence(tmp_path
     ] == [[0, 1], [2, 3]]
 
 
-def test_run_promotes_holdout_improvement_even_below_absolute_quality_floors(tmp_path, monkeypatch):
+def test_run_rejects_all_versions_below_holdout_quality_floors(tmp_path, monkeypatch):
     def fake_optimize(**kwargs):
         return PromptOptimizationResult(
             instruction=kwargs["seed_instruction"] + "\nAnswer directly.",
@@ -299,24 +299,21 @@ def test_run_promotes_holdout_improvement_even_below_absolute_quality_floors(tmp
         dataset_size=5,
     )
 
-    run_improvement_pipeline(
-        store,
-        run.id,
-        PipelineSettings(deterministic_mode=True),
-    )
+    with pytest.raises(RuntimeError, match="No agent version passed quality admission"):
+        run_improvement_pipeline(store, run.id, PipelineSettings(deterministic_mode=True))
 
-    completed = store.get_run(run.id, owner_id="owner-a")
-    assert completed.status == "completed"
-    assert completed.best_agent_version_id is not None
-    assert completed.promotion_decision["promoted"] is True
-    assert completed.promotion_decision["winner"] == "optimized"
-    assert completed.promotion_decision.get("fallback") is not True
-    assert completed.promotion_decision["deployed_agent_version_id"] == completed.best_agent_version_id
-    event_types = [event.type for event in store.list_events(run.id)]
-    assert "verification_completed" in event_types
-    assert "run_completed" in event_types
-    assert "run_failed" not in event_types
-    assert store.get_project(project.id, owner_id="owner-a").promoted_agent_version_id == completed.best_agent_version_id
+    failed = store.get_run(run.id, owner_id="owner-a")
+    assert failed.status == "failed"
+    assert failed.error["type"] == "RuntimeError"
+    assert failed.completed_at is not None
+    assert failed.promotion_decision is None
+    assert store.get_project(project.id, owner_id="owner-a").promoted_agent_version_id is None
+    events = store.list_events(run.id)
+    assert "run_failed" in [event.type for event in events]
+    assert "run_completed" not in [event.type for event in events]
+    admission = next(event.payload for event in events if event.type == "quality_admission_completed")
+    assert admission["thresholds_enforced"] is True
+    assert admission["eligibility"] == {"seed": False, "optimized": False, "incumbent": False}
 
 
 def test_dataset_generation_degrades_with_a_clear_error_when_every_batch_fails(tmp_path, monkeypatch):
@@ -471,6 +468,7 @@ def test_holdout_comparison_selects_a_version_even_when_absolute_scores_are_weak
     assert completed.promotion_decision["winner"] == "seed"
     assert completed.promotion_decision["deployed_agent_version_id"] == completed.best_agent_version_id
     assert completed.promotion_decision["quality_admission"]["seed"]["holdout_pass_rate"] == 1.0
+    assert completed.promotion_decision["quality_admission"]["thresholds_enforced"] is True
     assert store.get_project(project.id, owner_id="owner-a").promoted_agent_version_id == completed.best_agent_version_id
     assert "verification_completed" in [event.type for event in store.list_events(run.id)]
 

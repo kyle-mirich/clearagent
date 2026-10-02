@@ -31,6 +31,7 @@ from clearagent.builds.datasets import (
 from clearagent.builds.admission import (
     MIN_HOLDOUT_PASS_RATE,
     MIN_REQUIRED_BEHAVIOR_PASS_RATE,
+    candidate_is_eligible,
 )
 from clearagent.builds.budgets import BuildBudgetExceeded, BudgetTracker, PreflightBudget
 from clearagent.store import Store, _now
@@ -762,9 +763,9 @@ def run_improvement_pipeline(
             },
         }
         quality_admission = {
-            "selection_rule": "highest_holdout_score",
-            "deployment_gate": "optimized_score_strictly_greater_than_seed",
-            "thresholds_enforced": False,
+            "selection_rule": "highest_eligible_holdout_score",
+            "deployment_gate": "holdout_quality_admission",
+            "thresholds_enforced": True,
             "thresholds": {
                 "min_holdout_pass_rate": MIN_HOLDOUT_PASS_RATE,
                 "min_required_behavior_pass_rate": MIN_REQUIRED_BEHAVIOR_PASS_RATE,
@@ -791,10 +792,15 @@ def run_improvement_pipeline(
             },
         }
         eligibility = {
-            "seed": True,
-            "optimized": optimizer_improved,
-            "incumbent": incumbent_test is not None,
+            "seed": candidate_is_eligible(seed_test),
+            "optimized": optimizer_improved and candidate_is_eligible(optimized_test),
+            "incumbent": candidate_is_eligible(incumbent_test),
         }
+        quality_admission["eligibility"] = eligibility
+        _event(
+            store, run_id, "quality_admission_completed", "hidden_test_evaluation",
+            "Checked holdout quality admission for every evaluated version.", quality_admission,
+        )
         winner_id, winner_kind, winner_score = _select_deployment(
             seed=(
                 seed_version_id,
@@ -1503,6 +1509,7 @@ async def _generate_dataset_live_async(
                 f"(cases per split: {survivors}; minimum {MIN_CASES_PER_SPLIT} required)."
             )
         layout["split_counts"] = survivors
+        layout["row_count"] = len(layout["examples"])
     layout["generation_metadata"] = {
         **layout["generation_metadata"],
         "template_version": "model-generated-v2",
@@ -1763,7 +1770,7 @@ def _quality_admission_table(admission: dict[str, Any]) -> str:
     if not admission:
         return "No graded quality-admission evidence recorded."
     rows = [
-        "Selection rule: highest holdout score",
+        "Selection rule: highest holdout score among versions that pass quality admission",
         "",
         "| Version | Validation pass rate | Holdout pass rate |",
         "| --- | ---: | ---: |",
