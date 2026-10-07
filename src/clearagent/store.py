@@ -16,6 +16,14 @@ from clearagent.models import EventRecord, FeedbackKind, FeedbackRecord, Project
 POSTGRES_RUN_ADMISSION_LOCK_ID = int.from_bytes(b"CLAGRUNS", byteorder="big")
 
 
+class RateLimitError(RuntimeError):
+    def __init__(self, rate_key: str, bucket: str, retry_after: int):
+        super().__init__(f"Rate limit reached for {rate_key} in {bucket}")
+        self.rate_key = rate_key
+        self.bucket = bucket
+        self.retry_after = retry_after
+
+
 class ActiveRunCapacityError(RuntimeError):
     def __init__(self, scope: str):
         super().__init__(f"Active run capacity reached for {scope}")
@@ -591,6 +599,24 @@ class Store:
                 window_seconds=window_seconds,
                 now=now,
             )
+
+    def consume_rate_limits(
+        self, *, rate_limits: tuple[tuple[str, str, int, int], ...],
+    ) -> None:
+        """Consume all buckets, or raise RateLimitError without consuming any.
+
+        Stable row ordering prevents deadlocks across concurrent callers. An
+        exception rolls back every increment, including the rejecting bucket.
+        """
+        now = int(time.time())
+        with self.connect() as db:
+            for rate_key, bucket, limit, window_seconds in sorted(rate_limits):
+                allowed, retry_after = _consume_rate_limit(
+                    db, rate_key=rate_key, bucket=bucket, limit=limit,
+                    window_seconds=window_seconds, now=now,
+                )
+                if not allowed:
+                    raise RateLimitError(rate_key, bucket, retry_after)
 
     def run_stream_snapshot(
         self,
